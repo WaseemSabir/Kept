@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: macOS · build, test, app
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Show toolchain
+        id: toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+          echo "key=$(swift --version 2>&1 | shasum | cut -c1-12)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v6
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            spm-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-
+
+      - name: Build
+        run: swift build
+
+      - name: Test
+        run: swift test
+
+      - name: Build Kept.app
+        run: make app
+
+      - name: Launch smoke test
+        run: |
+          log="$RUNNER_TEMP/kept.log"
+          dist/Kept.app/Contents/MacOS/Kept >"$log" 2>&1 &
+          pid=$!
+          sleep 5
+          if ! kill -0 "$pid" 2>/dev/null; then
+            status=0; wait "$pid" || status=$?
+            echo "::error::Kept exited during launch (status $status)"
+            cat "$log"
+            exit 1
+          fi
+
+          # Opening the running app again shows the panel (reopen event).
+          open dist/Kept.app || echo "::warning::Could not send a reopen event to Kept"
+          sleep 2
+          if ! kill -0 "$pid" 2>/dev/null; then
+            echo "::error::Kept exited after showing the panel"
+            cat "$log"
+            exit 1
+          fi
+
+          echo "Kept is running (pid $pid)"
+          kill "$pid"
+          wait "$pid" 2>/dev/null || true
+          pkill -f "Kept.app/Contents/MacOS/Kept" || true
+          cat "$log"
+
+  linux:
+    name: Linux · KeptCore
+    runs-on: ubuntu-latest
+    container: swift:6.2-noble
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install SQLite headers
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends libsqlite3-dev
+
+      - name: Show toolchain
+        run: swift --version
+
+      - name: Build
+        run: swift build
+
+      - name: Test
+        run: swift test

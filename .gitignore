@@ -5,6 +5,9 @@
 xcuserdata/
 DerivedData/
 Package.resolved.lock
+# The only dependency (KeyboardShortcuts) is macOS-only, and SwiftPM on Linux
+# deletes Package.resolved when it resolves an empty graph, so it isn't tracked.
+Package.resolved
 
 # Build products
 dist/
