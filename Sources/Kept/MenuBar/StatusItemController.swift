@@ -20,13 +20,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusItem.behavior = .removalAllowed
         guard let button = statusItem.button else { return }
 
-        // Placeholder glyph until Kept's own template image (M7).
-        if let image = NSImage(systemSymbolName: "list.clipboard", accessibilityDescription: "Kept") {
-            image.isTemplate = true
-            button.image = image
-        } else {
-            button.title = "Kept"
-        }
+        button.image = MenuBarIcon.image(paused: false)
         button.toolTip = "Kept"
         button.target = self
         button.action = #selector(statusItemClicked(_:))

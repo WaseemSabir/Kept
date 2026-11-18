@@ -112,6 +112,7 @@ A single floating panel, ~720 × 460 pt, centered on the active screen
 | Footer with "A · B · C" meta     | Facts live in a label/value list in the preview; footer only holds shortcut hints. |
 | Monospace for small data labels  | Mono is only used where content is code-like; numbers use monospaced *digits* of SF Pro. |
 | Decorative gradients / shadows   | None. Native window shadow only. |
+| Clipboard / paperclip app icon   | The marked line: a short list with one line swiped by the highlighter (see [Icon](#icon)). |
 
 ## Keys
 
@@ -121,9 +122,51 @@ every list action uses a modifier (⌘⌫ deletes a clip, ⌘P pins).
 
 ## Menu bar
 
-- Template glyph in the menu bar (monochrome, adapts to light/dark).
+- Template glyph in the menu bar (monochrome, adapts to light/dark): the
+  app icon's marked line (see [Icon](#icon)). While capture is paused the
+  marker turns hollow.
 - Click → the same panel, anchored under the status item.
 - Right-click (or ⌥-click) → small menu: Pause capture, Settings…, Quit.
+
+## Icon
+
+**Concept: the marked line.** Three lines of a clip history, the middle one
+swiped with the highlighter: the thing you meant to keep, marked the same way
+the panel marks its selection. No clipboards, paperclips or copy squares.
+
+| Token      | Value                         | Use |
+|------------|-------------------------------|-----|
+| `graphite` | `#363940` → `#202227`         | Body, lit from the top; also the ink of the marked line |
+| `paper`    | `#E4E4E0`                     | The unmarked lines |
+| `marker`   | `#FFD84D`                     | The swipe, the icon's only color |
+| `rim`      | white, 14% → 4%, 4 px inside  | Keeps the edge visible on dark backgrounds |
+
+- **Shape.** Standard macOS grid: 1024 px canvas, 824 px body at 100 px
+  with continuous corners (radius 185.4). No baked shadow, so the system
+  sees the standard shape and adds its own depth.
+- **The marker** has chisel-tip ends cut at the same angle and runs past
+  the end of the text, the way a real highlighter does. Unmarked lines are
+  paper on graphite; the marked line is ink on the marker.
+- **Small sizes.** `AppIcon-32.svg` (32 px and 16 pt @2x) and
+  `AppIcon-16.svg` (16 px) redraw the same picture on the pixel grid: whole
+  pixel lines, single-pixel steps for the chisel ends at 16 px.
+- **Menu bar.** `MenuBarIcon` (in `Sources/Kept/MenuBar/`) draws the same
+  idea in code as a 20 × 18 pt template image: two lines and a solid marker
+  with the middle line knocked out of it. `MenuBarIcon.image(paused: true)`
+  draws the marker hollow, with the line inside, for "capture paused".
+
+**Regenerate.** The SVGs in `Resources/Icon/` are the source of truth;
+`Resources/AppIcon.icns` is generated from them and committed, so `make app`
+needs no extra tools. After editing an SVG:
+
+```sh
+pip install pillow cairosvg     # on macOS, CairoSVG also needs: brew install cairo
+scripts/make-icon.py            # renders every size, writes Resources/AppIcon.icns
+scripts/make-icon.py --iconset /tmp/AppIcon.iconset   # also keep the PNGs to look at
+```
+
+The script uses `iconutil` on macOS and its own .icns writer elsewhere.
+Commit the SVG and the .icns together.
 
 ## Settings window
 

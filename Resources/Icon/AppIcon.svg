@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Kept</title>
+  <!--
+    Kept app icon, the source of truth for 64 px and up (16 and 32 px have
+    hinted twins next to this file). Render with scripts/make-icon.py.
+
+    macOS grid: 1024 canvas, 824 x 824 body at (100, 100) with continuous
+    ("squircle") corners of radius 185.4. No baked shadow: the margin stays
+    transparent so the system can recognise the standard shape.
+
+    Concept: a short clip history, three lines, the middle one marked with a
+    highlighter. The marker is the only color.
+  -->
+  <defs>
+    <path id="body" d="M383.4 100H640.6C722.2 100 763 100 799.8 112.1C859.8 134.4 889.6 164.2 911.9 224.2C924 261 924 301.8 924 383.4V640.6C924 722.2 924 763 911.9 799.8C889.6 859.8 859.8 889.6 799.8 911.9C763 924 722.2 924 640.6 924H383.4C301.8 924 261 924 224.2 911.9C164.2 889.6 134.4 859.8 112.1 799.8C100 763 100 722.2 100 640.6V383.4C100 301.8 100 261 112.1 224.2C134.4 164.2 164.2 134.4 224.2 112.1C261 100 301.8 100 383.4 100Z"/>
+    <clipPath id="inside">
+      <use href="#body"/>
+    </clipPath>
+    <!-- Graphite, lit from the top. -->
+    <linearGradient id="graphite" x1="0" y1="100" x2="0" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#363940"/>
+      <stop offset="1" stop-color="#202227"/>
+    </linearGradient>
+    <!-- A faint inner edge, so the body still reads on dark backgrounds. -->
+    <linearGradient id="rim" x1="0" y1="100" x2="0" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.04"/>
+    </linearGradient>
+  </defs>
+
+  <use href="#body" fill="url(#graphite)"/>
+  <use href="#body" fill="none" stroke="url(#rim)" stroke-width="8" clip-path="url(#inside)"/>
+
+  <!-- Line 1 (paper) -->
+  <rect x="224" y="300" width="456" height="56" rx="28" fill="#E4E4E0"/>
+
+  <!-- The marker: a chisel-tip swipe, both ends cut at the same angle. It
+       runs past the end of the text, the way a real highlighter does. -->
+  <path d="M222 424H860L810 600H172Z" fill="#FFD84D"/>
+
+  <!-- Line 2, the one that's marked (ink on the marker) -->
+  <rect x="224" y="488" width="472" height="48" rx="24" fill="#202227"/>
+
+  <!-- Line 3 (paper) -->
+  <rect x="224" y="668" width="368" height="56" rx="28" fill="#E4E4E0"/>
+</svg>
