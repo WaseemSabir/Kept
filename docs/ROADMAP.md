@@ -83,8 +83,8 @@ Notes:
 
 ## M7 — Menu bar & app identity
 - ◐ Left-click toggles panel; right-click / ⌥-click menu (Pause, Clear history, Settings…, Quit) — M0 has toggle and Quit
-- ☐ Custom template menu bar glyph; dimmed when paused
-- ☐ App icon (`.icns` via `iconutil`)
+- ◐ Custom template menu bar glyph; dimmed when paused — glyph + paused variant drawn (`MenuBarIcon`); wiring to pause comes with M6/M7
+- ☑ App icon — "the marked line" (`Resources/Icon/*.svg` → `scripts/make-icon.py` → `Resources/AppIcon.icns`)
 - ☐ Reopen (launching again) opens Settings — escape hatch if the menu bar icon is hidden
 
 ## M8 — Images & files polish
