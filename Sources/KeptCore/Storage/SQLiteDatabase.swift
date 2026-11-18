@@ -59,6 +59,74 @@ public final class SQLiteDatabase {
         }
     }
 
+    /// Runs `sql` with `bindings` (numbered from 1) and steps it to completion.
+    public func run(_ sql: String, _ bindings: SQLiteValue...) throws(SQLiteError) {
+        let statement = try prepare(sql)
+        try statement.bind(bindings)
+        while try statement.step() {}
+    }
+
+    /// The first column of the first row `sql` returns, as an integer.
+    public func scalarInt(_ sql: String) throws(SQLiteError) -> Int64? {
+        let statement = try prepare(sql)
+        guard try statement.step(), !statement.isNull(at: 0) else { return nil }
+        return statement.int64(at: 0)
+    }
+
+    // MARK: Transactions
+
+    /// Whether a transaction is open on this connection.
+    public var isInTransaction: Bool {
+        sqlite3_get_autocommit(handle) == 0
+    }
+
+    /// Starts a write transaction, taking the write lock right away.
+    public func beginTransaction() throws(SQLiteError) {
+        try execute("BEGIN IMMEDIATE")
+    }
+
+    public func commit() throws(SQLiteError) {
+        try execute("COMMIT")
+    }
+
+    /// Rolls back the open transaction, if any. (SQLite may already have
+    /// rolled back after some errors.)
+    public func rollback() throws(SQLiteError) {
+        guard isInTransaction else { return }
+        try execute("ROLLBACK")
+    }
+
+    /// Runs `body` in a transaction: commits when it returns, rolls back when
+    /// it throws.
+    public func transaction<T>(_ body: () throws(SQLiteError) -> T) throws(SQLiteError) -> T {
+        try beginTransaction()
+        do throws(SQLiteError) {
+            let result = try body()
+            try commit()
+            return result
+        } catch {
+            // The original error explains the failure better than a failed rollback would.
+            try? rollback()
+            throw error
+        }
+    }
+
+    // MARK: Pragmas and status
+
+    /// The schema version stored in the database header (`PRAGMA user_version`).
+    public func userVersion() throws(SQLiteError) -> Int {
+        Int(try scalarInt("PRAGMA user_version") ?? 0)
+    }
+
+    public func setUserVersion(_ version: Int) throws(SQLiteError) {
+        try execute("PRAGMA user_version = \(version)")
+    }
+
+    /// Rows changed by the most recent INSERT, UPDATE or DELETE.
+    public var changes: Int {
+        Int(sqlite3_changes(handle))
+    }
+
     /// Compiles a single SQL statement so it can be bound and stepped.
     public func prepare(_ sql: String) throws(SQLiteError) -> SQLiteStatement {
         var statement: OpaquePointer?

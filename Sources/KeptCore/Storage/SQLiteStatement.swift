@@ -1,4 +1,5 @@
 import CSQLite
+import Foundation
 
 /// A compiled SQL statement.
 ///
@@ -32,8 +33,44 @@ public final class SQLiteStatement {
         try check(status)
     }
 
+    public func bind(_ value: Int, at index: Int) throws(SQLiteError) {
+        try bind(Int64(value), at: index)
+    }
+
+    public func bind(_ value: Double, at index: Int) throws(SQLiteError) {
+        try check(sqlite3_bind_double(handle, Int32(index), value))
+    }
+
+    /// Binds `value` as a blob; empty data binds an empty blob, not `NULL`.
+    public func bind(_ value: Data, at index: Int) throws(SQLiteError) {
+        let status = value.withUnsafeBytes { bytes in
+            guard let base = bytes.baseAddress, !bytes.isEmpty else {
+                return sqlite3_bind_zeroblob(handle, Int32(index), 0)
+            }
+            return sqlite3_bind_blob64(handle, Int32(index), base, sqlite3_uint64(bytes.count), csqlite_transient())
+        }
+        try check(status)
+    }
+
     public func bindNull(at index: Int) throws(SQLiteError) {
         try check(sqlite3_bind_null(handle, Int32(index)))
+    }
+
+    public func bind(_ value: SQLiteValue, at index: Int) throws(SQLiteError) {
+        switch value {
+        case .null: try bindNull(at: index)
+        case .integer(let value): try bind(value, at: index)
+        case .real(let value): try bind(value, at: index)
+        case .text(let value): try bind(value, at: index)
+        case .blob(let value): try bind(value, at: index)
+        }
+    }
+
+    /// Binds `values` to parameters 1, 2, 3…
+    public func bind(_ values: [SQLiteValue]) throws(SQLiteError) {
+        for (offset, value) in values.enumerated() {
+            try bind(value, at: offset + 1)
+        }
     }
 
     // MARK: Stepping
@@ -56,10 +93,37 @@ public final class SQLiteStatement {
         try check(sqlite3_reset(handle))
     }
 
+    /// Steps the statement to completion, ignoring any rows.
+    public func run() throws(SQLiteError) {
+        while try step() {}
+    }
+
     // MARK: Reading columns
+
+    public func isNull(at column: Int) -> Bool {
+        sqlite3_column_type(handle, Int32(column)) == SQLITE_NULL
+    }
 
     public func int64(at column: Int) -> Int64 {
         sqlite3_column_int64(handle, Int32(column))
+    }
+
+    public func int(at column: Int) -> Int {
+        Int(int64(at: column))
+    }
+
+    public func double(at column: Int) -> Double {
+        sqlite3_column_double(handle, Int32(column))
+    }
+
+    /// The column's bytes, or `nil` when it is `NULL`.
+    public func data(at column: Int) -> Data? {
+        guard !isNull(at: column) else { return nil }
+        // Ask for the pointer before the length, as SQLite recommends.
+        let bytes = sqlite3_column_blob(handle, Int32(column))
+        let count = Int(sqlite3_column_bytes(handle, Int32(column)))
+        guard let bytes, count > 0 else { return Data() }
+        return Data(bytes: bytes, count: count)
     }
 
     /// The column's text, or `nil` when it is `NULL`.

@@ -90,4 +90,54 @@ struct SQLiteDatabaseTests {
             try database.prepare("  -- nothing here")
         }
     }
+    @Test("Round-trips doubles and blobs, keeping empty blobs apart from NULL")
+    func roundTripsDoublesAndBlobs() throws {
+        let database = try SQLiteDatabase(.inMemory)
+        try database.execute("CREATE TABLE t (r REAL, b BLOB, e BLOB, n BLOB)")
+        let payload = Data((0...255).map(UInt8.init))
+        try database.run("INSERT INTO t VALUES (?, ?, ?, ?)", .real(800_000_000.123_456), .blob(payload), .blob(Data()), .null)
+
+        let select = try database.prepare("SELECT r, b, e, n FROM t")
+        #expect(try select.step())
+        #expect(select.double(at: 0) == 800_000_000.123_456)
+        #expect(select.data(at: 1) == payload)
+        #expect(select.data(at: 2) == Data())
+        #expect(select.data(at: 3) == nil)
+        #expect(select.isNull(at: 3))
+    }
+
+    @Test("Commits a transaction and rolls one back on error")
+    func runsTransactions() throws {
+        let database = try SQLiteDatabase(.inMemory)
+        try database.execute("CREATE TABLE t (v INTEGER UNIQUE)")
+
+        try database.transaction { () throws(SQLiteError) in
+            try database.run("INSERT INTO t VALUES (?)", .int(1))
+        }
+        #expect(throws: SQLiteError.self) {
+            try database.transaction { () throws(SQLiteError) in
+                try database.run("INSERT INTO t VALUES (?)", .int(2))
+                try database.run("INSERT INTO t VALUES (?)", .int(1))  // violates UNIQUE
+            }
+        }
+        #expect(!database.isInTransaction)
+        #expect(try database.scalarInt("SELECT COUNT(*) FROM t") == 1)
+        #expect(try database.scalarInt("SELECT MAX(v) FROM t") == 1)
+    }
+
+    @Test("Reads and writes the schema version")
+    func readsUserVersion() throws {
+        let database = try SQLiteDatabase(.inMemory)
+        #expect(try database.userVersion() == 0)
+        try database.setUserVersion(3)
+        #expect(try database.userVersion() == 3)
+    }
+
+    @Test("Reports how many rows a statement changed")
+    func countsChanges() throws {
+        let database = try SQLiteDatabase(.inMemory)
+        try database.execute("CREATE TABLE t (v INTEGER); INSERT INTO t VALUES (1), (2), (3);")
+        try database.run("DELETE FROM t WHERE v > ?", .int(1))
+        #expect(database.changes == 2)
+    }
 }
