@@ -74,7 +74,7 @@ A single floating panel, ~720 × 460 pt, centered on the active screen
 │                                │   Copied    2 minutes ago           │
 │                                │   Size      142 characters          │
 ├────────────────────────────────┴─────────────────────────────────────┤
-│  ⏎ Paste   ⌥⏎ Paste as plain text   ⌘P Pin   ⌫ Delete                  │  footer, 30pt
+│  ⏎ Paste   ⌥⏎ Paste as plain text   ⌘P Pin   ⌘⌫ Delete                 │  footer, 30pt
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -112,6 +112,12 @@ A single floating panel, ~720 × 460 pt, centered on the active screen
 | Footer with "A · B · C" meta     | Facts live in a label/value list in the preview; footer only holds shortcut hints. |
 | Monospace for small data labels  | Mono is only used where content is code-like; numbers use monospaced *digits* of SF Pro. |
 | Decorative gradients / shadows   | None. Native window shadow only. |
+
+## Keys
+
+The full shortcut map lives in [RESEARCH.md](RESEARCH.md#keyboard-shortcut-map).
+The search field always has focus, so plain letters and ⌫ edit the query;
+every list action uses a modifier (⌘⌫ deletes a clip, ⌘P pins).
 
 ## Menu bar
 
