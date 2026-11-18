@@ -8,11 +8,22 @@ from [DESIGN.md](DESIGN.md); structure from [ARCHITECTURE.md](ARCHITECTURE.md).
 Status: ☐ todo · ◐ in progress · ☑ done
 
 ## M0 — Foundation
-- ☐ Swift package: `KeptCore` (Foundation-only, Linux-testable), `CSQLite`, `Kept` app (macOS-only targets)
-- ☐ App skeleton: agent app (`LSUIElement`), status item, empty panel toggled from the status item
-- ☐ `scripts/build-app.sh` assembles a sandboxed, ad-hoc-signed `Kept.app`; `Makefile` (`build`, `test`, `app`, `run`)
-- ☐ CI: macOS build + tests + app bundle; Linux core tests
-- ☐ README, LICENSE (MIT), CLAUDE.md conventions
+- ☑ Swift package: `KeptCore` (Foundation-only, Linux-testable), `CSQLite`, `Kept` app (macOS-only targets)
+- ☑ App skeleton: agent app (`LSUIElement`), status item, empty panel toggled from the status item
+- ☑ `scripts/build-app.sh` assembles a sandboxed, ad-hoc-signed `Kept.app`; `Makefile` (`build`, `test`, `app`, `run`)
+- ☑ CI: macOS build + tests + app bundle; Linux core tests
+- ☑ README, LICENSE (MIT), CLAUDE.md conventions
+
+Notes:
+- Also done early: the ⇧⌘V hotkey (KeyboardShortcuts 3.x) and the `Theme` tokens; a thin
+  `SQLiteDatabase`/`SQLiteStatement` wrapper with smoke tests (M1 grows it into the store).
+- Relaunching Kept shows the panel for now; M7 switches that to opening Settings.
+- `Package.resolved` is not tracked: SwiftPM on Linux deletes it because the only
+  dependency is macOS-only. KeyboardShortcuts is pinned with `from: "3.1.0"`.
+- `build-app.sh` builds with `--build-system swiftbuild` and copies dependencies' resource
+  bundles to `Contents/Resources`, where Swift Build's `Bundle.module` looks. (The native
+  build system, still the default in Swift 6.3, looks only at the `.app` root and the
+  build folder.) M6 should confirm the KeyboardShortcuts recorder shows its strings.
 
 ## M1 — History store (core)
 - ☐ SQLite wrapper + schema + migrations (`clips`, `representations`)
@@ -29,13 +40,13 @@ Status: ☐ todo · ◐ in progress · ☑ done
 - ☐ Default excluded apps (Passwords, Keychain Access, 1Password, Bitwarden, KeePassXC)
 
 ## M3 — The panel
-- ☐ Non-activating floating `NSPanel` hosting SwiftUI; centered on the active screen
-- ☐ Global hotkey ⇧⌘V (KeyboardShortcuts) toggles the panel
+- ☑ Non-activating floating `NSPanel` hosting SwiftUI; centered on the active screen (M0)
+- ☑ Global hotkey ⇧⌘V (KeyboardShortcuts) toggles the panel (M0)
 - ☐ Search field (always focused), live filtering, fuzzy-ish matching (core `ClipSearch`)
 - ☐ List with quick-paste numbers, pinned section, kind-aware rows (swatch, thumbnail, host/path, mono for code)
 - ☐ Preview pane with facts (source, copied, size)
 - ☐ Footer with shortcut hints; empty states
-- ☐ Design tokens (`Theme`) and highlighter selection
+- ◐ Design tokens (`Theme`) and highlighter selection — tokens done in M0
 - ☐ Keyboard: ↑/↓ ⌃N/⌃P, ⌘↑/⌘↓, PgUp/PgDn, Esc (clear → close), ⌃U, Tab/⇧Tab type filter
 
 ## M4 — Paste
@@ -56,7 +67,7 @@ Status: ☐ todo · ◐ in progress · ☑ done
 - ☐ Privacy: pause, excluded apps (+/−, defaults), ignore Universal Clipboard, clear history
 
 ## M7 — Menu bar & app identity
-- ☐ Left-click toggles panel; right-click / ⌥-click menu (Pause, Clear history, Settings…, Quit)
+- ◐ Left-click toggles panel; right-click / ⌥-click menu (Pause, Clear history, Settings…, Quit) — M0 has toggle and Quit
 - ☐ Custom template menu bar glyph; dimmed when paused
 - ☐ App icon (`.icns` via `iconutil`)
 - ☐ Reopen (launching again) opens Settings — escape hatch if the menu bar icon is hidden
