@@ -26,23 +26,38 @@ Notes:
   build folder.) M6 should confirm the KeyboardShortcuts recorder shows its strings.
 
 ## M1 — History store (core)
-- ☐ SQLite wrapper + schema + migrations (`clips`, `representations`)
-- ☐ Content-addressed blob store for large payloads (images, RTF/HTML)
-- ☐ Record with dedup (re-copy bumps to top, counts copies)
-- ☐ Pins (never pruned, manual order), delete, clear unpinned
-- ☐ Pruning: item limit (default 500 unpinned), per-item size cap, orphan blob cleanup
+- ☑ SQLite wrapper + schema + migrations (`clips`, `representations`)
+- ☑ Content-addressed blob store for large payloads (images, RTF/HTML)
+- ☑ Record with dedup (re-copy bumps to top, counts copies)
+- ☑ Pins (never pruned, manual order), delete, clear unpinned
+- ☑ Pruning: item limit (default 500 unpinned), per-item size cap, orphan blob cleanup
+
+Notes:
+- Payloads over 64 KB go to `blobs/<sha256>`; smaller ones stay inline in SQLite. The per-item
+  cap (20 MB) is enforced by `ClipBuilder`, which drops the heaviest non-primary
+  representations first. Pruning by total blob size (~500 MB, RESEARCH §10) isn't done yet.
+- New pins go to the end of the pinned section; `pinOrder` stays 0…n-1.
+- `representations(for:)` returns `[PasteboardItem]` (typed items, not tuples).
+- Also done here: `ClipSearch` (M3) and the `Preferences` model (M6), both in core.
 
 ## M2 — Clipboard capture
-- ☐ `PasteboardSnapshot` + `CapturePolicy` (core): nspasteboard.org markers, legacy password types, excluded apps, whitespace-only, size caps, skipped heavy types
-- ☐ Primary kind detection: text / rich text / link / image / file(s) / color
+- ☑ `PasteboardSnapshot` + `CapturePolicy` (core): nspasteboard.org markers, legacy password types, excluded apps, whitespace-only, size caps, skipped heavy types
+- ☑ Primary kind detection: text / rich text / link / image / file(s) / color
 - ☐ `PasteboardMonitor` (app): `changeCount` polling with tolerance, source app (`org.nspasteboard.source` → frontmost app)
-- ☐ Skip Kept's own writes; pause capture; ignore next copy
-- ☐ Default excluded apps (Passwords, Keychain Access, 1Password, Bitwarden, KeePassXC)
+- ◐ Skip Kept's own writes; pause capture; ignore next copy — core: `app.kept.Kept.own` marker and pause in `CapturePolicy`; app: skip own change counts, ignore next copy
+- ☑ Default excluded apps (Passwords, Keychain Access, 1Password 7/8, Bitwarden, KeePassXC) in `PreferenceDefaults`
+
+Notes:
+- `PasteboardSnapshot.sourceBundleID(marker:frontmost:)` resolves the source app; the app
+  must resolve Finder's file reference URLs (`file:///.file/id=…`) before building a clip.
+- Core reads PNG sizes only; the app supplies an ImageIO `ImageInspecting` for TIFF/JPEG/HEIC.
+- `ClipBuilder` is pure and `Sendable`; run it off the main actor for large images (pure-Swift
+  SHA-256 hashes ~220 MB/s in release).
 
 ## M3 — The panel
 - ☑ Non-activating floating `NSPanel` hosting SwiftUI; centered on the active screen (M0)
 - ☑ Global hotkey ⇧⌘V (KeyboardShortcuts) toggles the panel (M0)
-- ☐ Search field (always focused), live filtering, fuzzy-ish matching (core `ClipSearch`)
+- ◐ Search field (always focused), live filtering, fuzzy-ish matching — core `ClipSearch` done (M1): 5,000 clips in ~4 ms per query (release)
 - ☐ List with quick-paste numbers, pinned section, kind-aware rows (swatch, thumbnail, host/path, mono for code)
 - ☐ Preview pane with facts (source, copied, size)
 - ☐ Footer with shortcut hints; empty states
@@ -62,9 +77,9 @@ Notes:
 
 ## M6 — Settings
 - ☐ Settings window (owned `NSWindow`, toolbar panes)
-- ☐ General: launch at login (`SMAppService`), history size, paste directly vs copy only, always paste plain text, panel position
+- ◐ General: launch at login (`SMAppService`), history size, paste directly vs copy only, always paste plain text, panel position — core `Preferences` done (M1)
 - ☐ Shortcuts: open Kept, paste clipboard as plain text (no default), pause capture (no default)
-- ☐ Privacy: pause, excluded apps (+/−, defaults), ignore Universal Clipboard, clear history
+- ◐ Privacy: pause, excluded apps (+/−, defaults), ignore Universal Clipboard, clear history — core `Preferences` and `HistoryStore.clearAll` done (M1)
 
 ## M7 — Menu bar & app identity
 - ◐ Left-click toggles panel; right-click / ⌥-click menu (Pause, Clear history, Settings…, Quit) — M0 has toggle and Quit

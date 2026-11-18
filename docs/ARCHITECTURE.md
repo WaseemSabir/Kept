@@ -35,12 +35,14 @@ Package.swift                 swift-tools 6.2; app targets only under #if os(mac
 Sources/
   CSQLite/                    system library target (module.modulemap → sqlite3)
   KeptCore/
-    Models/                   Clip, ClipKind, ClipRepresentation, SourceApp
-    Capture/                  PasteboardType, PasteboardSnapshot, CapturePolicy, ClipBuilder
-    Storage/                  SQLite (thin wrapper), Schema/migrations, BlobStore, HistoryStore
-    Search/                   ClipSearch (matching, ranking, kind filter)
-    Preferences/              Preferences (UserDefaults-backed, defaults in one place)
-    Support/                  SHA256, small helpers (formatting, text sanitizing)
+    Models/                   Clip, ClipKind, ClipFilter, ClipMetadata, PixelSize, ClipRepresentation, PasteboardItem, ClipDraft
+    Capture/                  PasteboardType, PasteboardSnapshot, CaptureSettings, CapturePolicy (+ CaptureDecision),
+                              ClipBuilder, ImageInspecting / PNGImageInspector, link / color / code detectors
+    Storage/                  SQLite wrapper (Database, Statement, Value, Error), HistorySchema (migrations),
+                              BlobStore, HistoryStore, HistoryLimits, HistoryStoreError
+    Search/                   ClipSearch (matching, ranking, kind filter), SearchKey (folded text)
+    Preferences/              Preferences (UserDefaults-backed), PreferenceDefaults (every default), PanelPosition
+    Support/                  SHA256, TextSanitizer, RTF/HTML text extractors, KeptVersion
   Kept/                       macOS app (executable target)
     App/                      main.swift, AppDelegate, AppEnvironment (composition root)
     Clipboard/                PasteboardMonitor, PasteboardReader, PasteboardWriter, PasteService, KeyboardLayout
@@ -65,32 +67,71 @@ Resources are **not** SwiftPM `resources:`; the bundle script copies them into
 
 ## Key types (KeptCore)
 
-- `Clip` — one history entry: `id`, `kind`, `title` (display summary,
-  sanitized, ≤1000 chars), `searchText` (≤10 KB), `contentHash` (SHA-256 of
-  primary payload, dedup key), `sourceBundleID`, `firstCopiedAt`,
-  `lastCopiedAt`, `copyCount`, `isPinned`, `pinOrder`, `byteSize`, plus
-  kind-specific metadata (image pixel size, file count, color value).
-- `ClipRepresentation` — one pasteboard type of a clip: `type` (UTI string)
-  and either inline `Data` (small) or a blob reference (large).
+- `Clip` — one history entry, without its payload: `id` (UUID), `kind`,
+  `title` (sanitized single line, ≤1,000 chars), `searchText` (sanitized,
+  ≤8 KB), `contentHash` (SHA-256 of the primary payload, the dedup key),
+  `sourceBundleID`, `firstCopiedAt`, `lastCopiedAt`, `copyCount`, `pinOrder`
+  (`nil` = not pinned; `isPinned`), `byteSize`, and `metadata`
+  (`ClipMetadata`: character count, `looksLikeCode`, link host, color hex,
+  image pixel size and type, file count). Each clip caches its folded search
+  text, so searching never re-normalizes.
 - `ClipKind` — `.text`, `.richText`, `.link`, `.image`, `.file`, `.color`.
-  Code-like text is `.text` with a `looksLikeCode` flag used only for
-  rendering.
+  Code-like text is `.text`/`.richText` with `metadata.looksLikeCode`, used
+  only for rendering. `ClipFilter` — `all, pinned, text, links, images,
+  files` (`text` covers rich text, colors and code).
+- `ClipRepresentation` — one pasteboard type of a clip (`type`, `data`).
+  `PasteboardItem` — one pasteboard item: its representations in order.
+  Whether bytes live inline or in a blob file is the store's business.
 - `PasteboardSnapshot` — platform-neutral copy of what's on the pasteboard:
-  ordered items of `(type, data)`, plus `changeCount` and source bundle ID.
-  The app builds it from `NSPasteboard`; tests build it by hand.
-- `CapturePolicy` — pure function from (types, source app, preferences) to
-  `.record` / `.ignore(reason)`. Checked on **types before data is read**.
-- `ClipBuilder` — snapshot → `ClipDraft` (kind detection, representation
-  filtering, title/search text, hash).
-- `HistoryStore` — `@MainActor`, `@Observable`. Owns the SQLite database and
-  blob store; exposes the ordered list of clip summaries and mutations:
-  `record(_:)`, `pin`, `unpin`, `movePin`, `delete`, `clearUnpinned`,
-  `representations(for:)`, `prune()`.
-- `ClipSearch` — pure: `(query, kind filter, clips) → ranked clips`.
-  Case/diacritic-insensitive; all tokens must match; prefix/word-start/
-  subsequence scoring; pinned first when the query is empty.
-- `Preferences` — `@Observable` wrapper over `UserDefaults` with every
-  default declared in one place.
+  ordered `items`, `changeCount`, `sourceBundleID` (resolve it with
+  `sourceBundleID(marker:frontmost:)`: `org.nspasteboard.source` first, then
+  the frontmost app). The app builds it from `NSPasteboard`; tests by hand.
+- `CaptureSettings` — the capture-related preferences as a plain value, so
+  policy and builder stay pure (`Preferences.captureSettings`).
+- `CapturePolicy` — pure: `decision(types:sourceBundleID:)` →
+  `.record` / `.ignore(IgnoreReason)` (`paused`, `ownWrite`, `concealed`,
+  `transient`, `autoGenerated`, `remoteClipboard`, `excludedApp`,
+  `kindDisabled`, `empty`). Checked on **types before data is read**.
+- `ClipBuilder` — pure and `Sendable`: `build(from:) -> ClipDraft?`. Keeps
+  only `PasteboardType.captured`, enforces `maxItemBytes` (drops the
+  heaviest non-primary representations first; `nil` if the primary payload
+  alone is too big), detects the kind, derives title, search text, metadata
+  and hash. Image sizes come from an injected `ImageInspecting` (core reads
+  PNG; the app adds ImageIO).
+- `HistoryStore` — `@MainActor`, `@Observable`, `init(directory:limits:)`.
+  Exposes `pinned` (pin order) and `recent` (unpinned, newest first) and
+  mutations: `record(_:at:)` (dedup bumps to top), `markUsed(_:at:)`, `pin`,
+  `unpin`, `movePin(_:toIndex:)`, `delete`, `clearUnpinned`, `clearAll`,
+  `setHistoryLimit`, `representations(for:) -> [PasteboardItem]`. Prunes
+  unpinned clips past the limit automatically (pins never); every error is
+  a thrown `HistoryStoreError`.
+- `ClipSearch` — pure: `results(for:filter:pinned:recent:) → [Clip]`.
+  Case/diacritic-insensitive; every token must match; word-start >
+  substring > subsequence (tokens ≥3 chars, near the start); ties by
+  recency; an empty query lists pins first, then recent clips.
+- `Preferences` — `@MainActor`, `@Observable` wrapper over an injected
+  `UserDefaults`; every default and range lives in `PreferenceDefaults`.
+
+### Storage layout
+
+`<directory>/History.sqlite` (WAL, foreign keys, `secure_delete`) with two
+tables: `clips` (summary columns, `content_hash` UNIQUE, `pin_order` NULL
+when unpinned, metadata as JSON) and `representations` (`clip_id` → clips
+ON DELETE CASCADE, `item_index`, `position`, `type`, inline `data` **or**
+`blob_hash`, `size`). Payloads over 64 KB go to `<directory>/blobs/<sha256>`
+(written atomically, 0600, in a 0700 folder); unreferenced blobs are deleted
+after each delete and swept at launch. `PRAGMA user_version` counts applied
+migrations (`HistorySchema`).
+
+### Capture flow (app ↔ core)
+
+1. On a `changeCount` change, read `types` and resolve the source app.
+2. `CapturePolicy(settings: preferences.captureSettings).decision(types:sourceBundleID:)`.
+3. On `.record`, read only `PasteboardType.captured` types of each item into
+   a `PasteboardSnapshot` (resolve Finder's file reference URLs,
+   `file:///.file/id=…`, to path URLs first).
+4. `ClipBuilder(settings:imageInspector:).build(from:)` — off the main actor
+   for large images — then `HistoryStore.record(_:)`.
 
 ## App layer
 
