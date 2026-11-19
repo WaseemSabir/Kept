@@ -17,6 +17,16 @@ public final class HistoryStore {
     public private(set) var recent: [Clip] = []
     /// How many unpinned clips are kept before the oldest are pruned.
     public private(set) var historyLimit: Int
+    /// Rows that couldn't be read when the store opened (an unknown kind,
+    /// say from a newer Kept, or an invalid ID). They are left untouched in
+    /// the database: never shown, pruned or swept, but replaced when the
+    /// same content is copied again and removed by `clearUnpinned()` or
+    /// `clearAll()`.
+    public private(set) var skippedRecordCount = 0
+    /// Problems found while opening that didn't stop the store from opening:
+    /// skipped or partly read rows, and a failed renumbering, prune or blob
+    /// sweep (all retried at the next launch). At most `maxOpenWarnings`.
+    public private(set) var openWarnings: [HistoryStoreError] = []
 
     /// The folder holding the database and the `blobs` folder.
     public let directory: URL
@@ -28,9 +38,17 @@ public final class HistoryStore {
 
     static let databaseFileName = "History.sqlite"
     static let blobDirectoryName = "blobs"
+    static let maxOpenWarnings = 20
+    /// How long a write waits for another connection's lock before failing.
+    static let busyTimeoutMilliseconds = 5000
 
     /// Opens (creating if needed) the history in `directory`, then prunes
     /// to the limit and deletes blob files nothing references.
+    ///
+    /// Throws only when the history can't be used at all (the folder or
+    /// database can't be opened, or a newer Kept's schema). Unreadable rows
+    /// are skipped (`skippedRecordCount`), and housekeeping that fails is
+    /// reported in `openWarnings` instead.
     public init(directory: URL, limits: HistoryLimits = HistoryLimits()) throws(HistoryStoreError) {
         self.directory = directory
         historyLimit = max(1, limits.historyLimit)
@@ -40,9 +58,17 @@ public final class HistoryStore {
 
         try BlobStore.createPrivateDirectory(at: directory)
         let path = directory.appendingPathComponent(Self.databaseFileName).path
+        // SQLite gives the -wal and -shm files the database file's permissions.
+        if !FileManager.default.fileExists(atPath: path) {
+            _ = FileManager.default.createFile(atPath: path, contents: nil, attributes: [.posixPermissions: 0o600])
+        }
+        for file in [path, path + "-wal", path + "-shm"] {
+            BlobStore.makePrivate(file, permissions: 0o600)
+        }
         do throws(SQLiteError) {
             database = try SQLiteDatabase(.file(path: path))
             try database.execute("""
+                PRAGMA busy_timeout = \(Self.busyTimeoutMilliseconds);
                 PRAGMA journal_mode = WAL;
                 PRAGMA synchronous = NORMAL;
                 PRAGMA foreign_keys = ON;
@@ -57,14 +83,18 @@ public final class HistoryStore {
         try mapErrors {
             pinned = try fetchClips("pin_order IS NOT NULL ORDER BY pin_order, rowid")
             recent = try fetchClips("pin_order IS NULL ORDER BY last_copied_at DESC, rowid DESC")
-            if pinned.enumerated().contains(where: { $0.element.pinOrder != $0.offset }) {
-                var renumbered = pinned
-                try transaction { try writePinOrder(&renumbered) }
-                pinned = renumbered
-            }
-            try prune()
-            try blobs.removeAll(except: referencedBlobHashes())
         }
+        if pinned.enumerated().contains(where: { $0.element.pinOrder != $0.offset }) {
+            var renumbered = pinned
+            bestEffort { try transaction { try writePinOrder(&renumbered) } }
+            // Keep the in-memory invariant even if the database kept the old
+            // numbers; they sort the same, and the next launch retries.
+            for index in renumbered.indices { renumbered[index].pinOrder = index }
+            pinned = renumbered
+        }
+        bestEffort { try prune() }
+        // Only sweep when the references are known; an error leaves every file.
+        bestEffort { try blobs.removeAll(except: referencedBlobHashes()) }
     }
 
     // MARK: Reading
@@ -135,17 +165,32 @@ public final class HistoryStore {
                 metadata: draft.metadata
             )
 
-            // Blob files go first, so a committed row never points at a missing file.
+            // Blob files go first (flushed to disk), so a committed row never
+            // points at a missing file.
             let representations = try storeRepresentations(of: draft.items)
-            let replacedBlobs = try existing.map { try blobHashes(of: [$0.id]) } ?? []
+            var replacedBlobs = try existing.map { try blobHashes(of: [$0.id]) } ?? []
+            // A row with the same content that wasn't loaded (unreadable, or
+            // from a newer Kept) gives way to the new copy.
+            replacedBlobs.formUnion(try blobHashes(
+                query: """
+                    SELECT r.blob_hash FROM representations r JOIN clips c ON c.id = r.clip_id
+                    WHERE c.content_hash = ? AND c.id <> ? AND r.blob_hash IS NOT NULL
+                    """,
+                .text(clip.contentHash), .text(clip.id.uuidString)
+            ))
             try transaction {
+                try database.run(
+                    "DELETE FROM clips WHERE content_hash = ? AND id <> ?",
+                    .text(clip.contentHash), .text(clip.id.uuidString)
+                )
                 try upsert(clip)
                 try database.run("DELETE FROM representations WHERE clip_id = ?", .text(clip.id.uuidString))
                 try insert(representations, for: clip.id)
             }
             place(clip)
             try prune(keeping: clip.id)
-            try removeBlobsIfUnreferenced(replacedBlobs)
+            // Committed; a file left behind is swept at the next launch.
+            try? removeBlobsIfUnreferenced(replacedBlobs)
             return clip
         }
     }
@@ -177,16 +222,21 @@ public final class HistoryStore {
         }
     }
 
-    /// Returns a pinned clip to the history by its last-copied time.
+    /// Returns a pinned clip to the top of the history: its `lastCopiedAt`
+    /// becomes `date`, so an old clip isn't pruned by the next copy.
     /// Unpinning an unpinned clip does nothing.
-    public func unpin(_ id: UUID) throws(HistoryStoreError) {
+    public func unpin(_ id: UUID, at date: Date = Date()) throws(HistoryStoreError) {
         try mapErrors {
             guard var clip = clip(withID: id) else { throw HistoryStoreError.clipNotFound(id) }
             guard clip.isPinned else { return }
             clip.pinOrder = nil
+            clip.lastCopiedAt = date
             var remaining = pinned.filter { $0.id != id }
             try transaction {
-                try database.run("UPDATE clips SET pin_order = NULL WHERE id = ?", .text(id.uuidString))
+                try database.run(
+                    "UPDATE clips SET pin_order = NULL, last_copied_at = ? WHERE id = ?",
+                    .real(date.timeIntervalSinceReferenceDate), .text(id.uuidString)
+                )
                 try writePinOrder(&remaining)
             }
             pinned = remaining
@@ -293,7 +343,8 @@ public final class HistoryStore {
         }
         if remainingPins.count != pinned.count { pinned = remainingPins }
         recent.removeAll { ids.contains($0.id) }
-        try removeBlobsIfUnreferenced(candidates)
+        // Committed; a file left behind is swept at the next launch.
+        try? removeBlobsIfUnreferenced(candidates)
     }
 
     /// Renumbers `pins` 0, 1, 2… in the database and in place.
@@ -315,27 +366,37 @@ public final class HistoryStore {
         first_copied_at, last_copied_at, copy_count, pin_order, byte_size, metadata
         """
 
+    /// The clips matching `clause` that can be read; the others are counted
+    /// in `skippedRecordCount` and noted in `openWarnings`.
     private func fetchClips(_ clause: String) throws -> [Clip] {
         let statement = try database.prepare("SELECT \(Self.clipColumns) FROM clips WHERE \(clause)")
         var clips: [Clip] = []
         while try statement.step() {
-            clips.append(try clip(from: statement))
+            if let clip = clip(from: statement) { clips.append(clip) }
         }
         return clips
     }
 
-    private func clip(from row: SQLiteStatement) throws -> Clip {
+    /// The clip a row describes, or `nil` (with a warning) when it can't be
+    /// shown: an invalid ID, or a kind this version doesn't know. Metadata
+    /// that can't be decoded is dropped rather than the whole clip.
+    private func clip(from row: SQLiteStatement) -> Clip? {
         guard let idString = row.string(at: 0), let id = UUID(uuidString: idString) else {
-            throw HistoryStoreError.corruptRecord("A clip has an invalid ID.")
+            skippedRecordCount += 1
+            warn(.corruptRecord("A clip has an invalid ID; it was skipped."))
+            return nil
         }
         guard let kindName = row.string(at: 1), let kind = ClipKind(rawValue: kindName) else {
-            throw HistoryStoreError.corruptRecord("Clip \(id) has an unknown kind.")
+            skippedRecordCount += 1
+            warn(.corruptRecord("Clip \(id) has an unknown kind; it was skipped."))
+            return nil
         }
         let metadata: ClipMetadata
         do {
             metadata = try decoder.decode(ClipMetadata.self, from: Data((row.string(at: 11) ?? "{}").utf8))
         } catch {
-            throw HistoryStoreError.corruptRecord("Clip \(id) has unreadable metadata.")
+            warn(.corruptRecord("Clip \(id) has unreadable metadata; it was loaded without it."))
+            metadata = ClipMetadata()
         }
         return Clip(
             id: id,
@@ -397,7 +458,8 @@ public final class HistoryStore {
         var size: Int
     }
 
-    /// Writes large payloads to the blob store and describes every row to insert.
+    /// Writes large payloads to the blob store and describes every row to
+    /// insert. Hashes `ClipBuilder` already worked out are reused.
     private func storeRepresentations(of items: [PasteboardItem]) throws -> [StoredRepresentation] {
         var stored: [StoredRepresentation] = []
         for (itemIndex, item) in items.enumerated() {
@@ -409,7 +471,7 @@ public final class HistoryStore {
                     position: position,
                     type: representation.type,
                     data: isLarge ? nil : representation.data,
-                    blobHash: isLarge ? try blobs.write(representation.data) : nil,
+                    blobHash: isLarge ? try blobs.write(representation.data, hash: representation.sha256) : nil,
                     size: size
                 ))
             }
@@ -452,8 +514,9 @@ public final class HistoryStore {
         return hashes
     }
 
-    private func blobHashes(query: String) throws -> Set<String> {
+    private func blobHashes(query: String, _ bindings: SQLiteValue...) throws -> Set<String> {
         let statement = try database.prepare(query)
+        try statement.bind(bindings)
         var hashes = Set<String>()
         while try statement.step() {
             if let hash = statement.string(at: 0) { hashes.insert(hash) }
@@ -490,6 +553,20 @@ public final class HistoryStore {
             try? database.rollback()
             throw error
         }
+    }
+
+    /// Runs housekeeping that may fail without making the store unusable,
+    /// noting a failure in `openWarnings`.
+    private func bestEffort(_ body: () throws -> Void) {
+        do throws(HistoryStoreError) {
+            try mapErrors(body)
+        } catch {
+            warn(error)
+        }
+    }
+
+    private func warn(_ warning: HistoryStoreError) {
+        if openWarnings.count < Self.maxOpenWarnings { openWarnings.append(warning) }
     }
 
     /// Runs `body`, reporting every failure as a `HistoryStoreError`.

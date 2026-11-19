@@ -2,13 +2,21 @@ import Foundation
 
 /// Large payloads as content-addressed files: `<directory>/<sha256>`.
 ///
-/// Files are written to a temporary name and renamed into place, readable
-/// only by the user (0600) in a private directory (0700). Writing the same
-/// bytes twice stores them once.
+/// Files are written to a temporary name, flushed to disk and renamed into
+/// place, readable only by the user (0600) in a private directory (0700).
+/// Writing the same bytes twice stores them once; an existing file is reused
+/// only after checking that it really holds those bytes.
 struct BlobStore: Sendable {
     let directory: URL
 
     private static let temporaryPrefix = ".tmp-"
+    /// Temporary files younger than this may belong to a write in progress
+    /// (another Kept process, or this one), so a sweep leaves them alone.
+    static let temporaryFileGracePeriod: TimeInterval = 10 * 60
+    /// Existing files up to this size are compared byte for byte before
+    /// reuse; larger ones by size and three samples.
+    private static let fullVerificationLimit = 8 * 1024 * 1024
+    private static let sampleLength = 64 * 1024
 
     init(directory: URL) throws(HistoryStoreError) {
         self.directory = directory
@@ -16,27 +24,25 @@ struct BlobStore: Sendable {
     }
 
     /// Stores `data` and returns its hash (lowercase hex SHA-256).
+    ///
+    /// - Parameter knownHash: `data`'s hash when the caller already has it
+    ///   (see `ClipRepresentation.sha256`), to skip hashing again.
     @discardableResult
-    func write(_ data: Data) throws(HistoryStoreError) -> String {
-        let hash = SHA256.hexDigest(of: data)
+    func write(_ data: Data, hash knownHash: String? = nil) throws(HistoryStoreError) -> String {
+        let hash = knownHash ?? SHA256.hexDigest(of: data)
+        guard Self.isValidHash(hash) else { throw .corruptRecord("Invalid blob hash \(hash)") }
         let destination = url(for: hash)
-        if FileManager.default.fileExists(atPath: destination.path) { return hash }
+        if holds(data, at: destination) { return hash }
 
         let temporary = directory.appendingPathComponent(Self.temporaryPrefix + UUID().uuidString)
-        let created = FileManager.default.createFile(
-            atPath: temporary.path,
-            contents: data,
-            attributes: [.posixPermissions: 0o600]
-        )
-        guard created else {
-            throw .fileSystem(path: temporary.path, reason: "The file couldn't be created.")
+        try Self.writeDurably(data, to: temporary.path)
+        // `rename` replaces a damaged file of the same name atomically.
+        guard rename(temporary.path, destination.path) == 0 else {
+            let reason = Self.describeErrno()
+            unlink(temporary.path)
+            throw .fileSystem(path: destination.path, reason: reason)
         }
-        do {
-            try FileManager.default.moveItem(at: temporary, to: destination)
-        } catch {
-            try? FileManager.default.removeItem(at: temporary)
-            throw .fileSystem(path: destination.path, reason: error.localizedDescription)
-        }
+        Self.synchronizeDirectory(at: directory.path)
         return hash
     }
 
@@ -72,21 +78,33 @@ struct BlobStore: Sendable {
     }
 
     /// Deletes every blob not in `referenced`, plus temporary files left by
-    /// interrupted writes. Returns how many files were removed.
+    /// interrupted writes that are older than `gracePeriod`. Tries every
+    /// file before reporting the first failure. Returns how many files were
+    /// removed.
     @discardableResult
-    func removeAll(except referenced: Set<String>) throws(HistoryStoreError) -> Int {
+    func removeAll(
+        except referenced: Set<String>,
+        keepingTemporaryFilesNewerThan gracePeriod: TimeInterval = BlobStore.temporaryFileGracePeriod,
+        now: Date = Date()
+    ) throws(HistoryStoreError) -> Int {
         var removed = 0
+        var firstFailure: HistoryStoreError?
         for name in try fileNames() {
-            let isOrphan = Self.isValidHash(name) && !referenced.contains(name)
-            guard isOrphan || name.hasPrefix(Self.temporaryPrefix) else { continue }
             let location = directory.appendingPathComponent(name)
+            if name.hasPrefix(Self.temporaryPrefix) {
+                let modified = (try? FileManager.default.attributesOfItem(atPath: location.path))?[.modificationDate] as? Date
+                if let modified, now.timeIntervalSince(modified) < gracePeriod { continue }
+            } else if !Self.isValidHash(name) || referenced.contains(name) {
+                continue
+            }
             do {
                 try FileManager.default.removeItem(at: location)
                 removed += 1
             } catch {
-                throw .fileSystem(path: location.path, reason: error.localizedDescription)
+                firstFailure = firstFailure ?? .fileSystem(path: location.path, reason: error.localizedDescription)
             }
         }
+        if let firstFailure { throw firstFailure }
         return removed
     }
 
@@ -102,6 +120,64 @@ struct BlobStore: Sendable {
         }
     }
 
+    // MARK: Verifying and writing files
+
+    /// Whether the file at `url` holds exactly `data`: same size, and the
+    /// same bytes (all of them, or the start, middle and end of a large file).
+    private func holds(_ data: Data, at url: URL) -> Bool {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), !isDirectory.boolValue,
+              let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              (attributes[.size] as? NSNumber)?.intValue == data.count
+        else { return false }
+
+        if data.count <= Self.fullVerificationLimit {
+            return (try? Data(contentsOf: url)) == data
+        }
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? handle.close() }
+        let length = Self.sampleLength
+        for offset in [0, data.count / 2 - length / 2, data.count - length] {
+            guard (try? handle.seek(toOffset: UInt64(offset))) != nil,
+                  let sample = try? handle.read(upToCount: length),
+                  sample == data.subdata(in: offset..<offset + length)
+            else { return false }
+        }
+        return true
+    }
+
+    /// Creates `path` (0600, failing if it exists), writes `data` and flushes
+    /// it to disk before returning, so a rename after it can't publish a
+    /// partly written file after a crash.
+    private static func writeDurably(_ data: Data, to path: String) throws(HistoryStoreError) {
+        let descriptor = open(path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
+        guard descriptor >= 0 else {
+            throw .fileSystem(path: path, reason: describeErrno())
+        }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: false)
+        do {
+            try handle.write(contentsOf: data)
+            try handle.synchronize()
+            try handle.close()
+        } catch {
+            try? handle.close()
+            unlink(path)
+            throw .fileSystem(path: path, reason: error.localizedDescription)
+        }
+    }
+
+    /// Flushes a directory entry change (a rename) to disk. Best effort.
+    static func synchronizeDirectory(at path: String) {
+        let descriptor = open(path, O_RDONLY)
+        guard descriptor >= 0 else { return }
+        _ = fsync(descriptor)
+        _ = close(descriptor)
+    }
+
+    private static func describeErrno() -> String {
+        String(cString: strerror(errno))
+    }
+
     /// 64 lowercase hex digits; anything else is never used as a file name.
     static func isValidHash(_ hash: String) -> Bool {
         hash.utf8.count == 64 && hash.utf8.allSatisfy { byte in
@@ -109,12 +185,14 @@ struct BlobStore: Sendable {
         }
     }
 
+    /// Creates the folder (0700), or makes an existing one private.
     static func createPrivateDirectory(at url: URL) throws(HistoryStoreError) {
         var isDirectory: ObjCBool = false
         if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) {
             guard isDirectory.boolValue else {
                 throw .fileSystem(path: url.path, reason: "A file is in the way of the folder.")
             }
+            makePrivate(url.path, permissions: 0o700)
             return
         }
         do {
@@ -126,5 +204,15 @@ struct BlobStore: Sendable {
         } catch {
             throw .fileSystem(path: url.path, reason: error.localizedDescription)
         }
+    }
+
+    /// Restricts an existing file or folder to `permissions` when it's
+    /// looser. Best effort: a file Kept can't change is still usable.
+    static func makePrivate(_ path: String, permissions: Int) {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: path),
+              let current = (attributes[.posixPermissions] as? NSNumber)?.intValue,
+              current & 0o777 != permissions
+        else { return }
+        try? FileManager.default.setAttributes([.posixPermissions: permissions], ofItemAtPath: path)
     }
 }

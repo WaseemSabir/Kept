@@ -122,10 +122,11 @@ struct HistoryStoreTests {
         try store.movePin(c.id, toIndex: 0)  // not pinned: no change
         #expect(store.pinned.map(\.title) == ["b", "a"])
 
-        try store.unpin(b.id)
+        try store.unpin(b.id, at: .at(4))
         #expect(store.pinned.map(\.title) == ["a"])
         #expect(store.pinned.map(\.pinOrder) == [0])
-        #expect(store.recent.map(\.title) == ["c", "b"])
+        #expect(store.recent.map(\.title) == ["b", "c"])
+        #expect(store.recent[0].lastCopiedAt == .at(4))
         #expect(store.recent.allSatisfy { !$0.isPinned })
         try store.unpin(c.id)  // not pinned
         #expect(throws: HistoryStoreError.self) { try store.pin(UUID()) }
@@ -307,10 +308,157 @@ struct HistoryStoreTests {
         let blobs = directory.appendingPathComponent(HistoryStore.blobDirectoryName)
         let orphan = String(repeating: "b", count: 64)
         try Data("orphan".utf8).write(to: blobs.appendingPathComponent(orphan))
-        try Data("partial".utf8).write(to: blobs.appendingPathComponent(".tmp-crash"))
+        let crashed = blobs.appendingPathComponent(".tmp-crash")
+        try Data("partial".utf8).write(to: crashed)
+        try FileManager.default.setAttributes([.modificationDate: Date.distantPast], ofItemAtPath: crashed.path)
 
         _ = try makeStore(HistoryLimits(inlineThreshold: 64))
         #expect(try FileManager.default.contentsOfDirectory(atPath: blobs.path) == [kept])
+    }
+
+    // MARK: Damaged history
+
+    /// Opens the history's database directly, as another program would.
+    private func openDatabase() throws -> SQLiteDatabase {
+        try SQLiteDatabase(.file(path: directory.appendingPathComponent(HistoryStore.databaseFileName).path))
+    }
+
+    private func insertRawClip(
+        _ database: SQLiteDatabase, id: String, kind: String, hash: String, metadata: String = "{}", at time: Double = 0
+    ) throws {
+        try database.run(
+            """
+            INSERT INTO clips (id, kind, title, search_text, content_hash, first_copied_at, last_copied_at, byte_size, metadata)
+            VALUES (?, ?, 'raw', 'raw', ?, ?, ?, 3, ?)
+            """,
+            .text(id), .text(kind), .text(hash), .real(Date.at(time).timeIntervalSinceReferenceDate),
+            .real(Date.at(time).timeIntervalSinceReferenceDate), .text(metadata)
+        )
+    }
+
+    @Test("Skips unreadable rows at open and keeps them untouched")
+    func skipsBadRows() throws {
+        defer { removeTemporaryDirectory(directory) }
+        do {
+            let store = try makeStore()
+            try store.record(textDraft("good"), at: .at(10))
+        }
+        let futureID = UUID().uuidString
+        do {
+            let database = try openDatabase()
+            try insertRawClip(database, id: futureID, kind: "hologram", hash: textDraft("from the future").contentHash, at: 1)
+            try insertRawClip(database, id: "not-a-uuid", kind: "text", hash: "h2", at: 2)
+            try insertRawClip(database, id: UUID().uuidString, kind: "text", hash: "h3", metadata: "{oops", at: 3)
+        }
+
+        let store = try makeStore(HistoryLimits(historyLimit: 1))
+        #expect(store.skippedRecordCount == 2)
+        #expect(store.openWarnings.count == 3)
+        // The row with bad metadata loads without it (and is then pruned).
+        #expect(store.recent.map(\.title) == ["good"])
+
+        let database = try openDatabase()
+        #expect(try database.scalarInt("SELECT COUNT(*) FROM clips WHERE kind = 'hologram' OR id = 'not-a-uuid'") == 2)
+
+        // Copying the same content again replaces the unreadable row.
+        let replaced = try store.record(textDraft("from the future"), at: .at(20))
+        #expect(replaced.id.uuidString != futureID)
+        #expect(try database.scalarInt("SELECT COUNT(*) FROM clips WHERE kind = 'hologram'") == 0)
+        #expect(store.recent.map(\.title) == ["from the future"])
+    }
+
+    @Test("Opens even when pruning and the blob sweep fail")
+    func survivesFailedHousekeeping() throws {
+        defer { removeTemporaryDirectory(directory) }
+        do {
+            let store = try makeStore(HistoryLimits(inlineThreshold: 64))
+            try store.record(try imageDraft(byteCount: 500), at: .at(1))
+            for index in 2...4 { try store.record(textDraft("\(index)"), at: .at(Double(index))) }
+        }
+        let blobs = directory.appendingPathComponent(HistoryStore.blobDirectoryName)
+        let orphan = String(repeating: "e", count: 64)
+        try Data("orphan".utf8).write(to: blobs.appendingPathComponent(orphan))
+        // Without the representations table, neither the prune nor the sweep
+        // can tell which files are in use.
+        try openDatabase().execute("DROP TABLE representations")
+
+        let store = try makeStore(HistoryLimits(historyLimit: 2, inlineThreshold: 64))
+        #expect(store.recent.count == 4)
+        #expect(store.openWarnings.count == 2)
+        #expect(store.openWarnings.allSatisfy { if case .database = $0 { true } else { false } })
+        #expect(try blobFiles().count == 2, "an uncertain sweep must not delete anything")
+    }
+
+    // MARK: Unpinning
+
+    @Test("Keeps an unpinned old clip through the next copy")
+    func unpinnedClipSurvivesPrune() throws {
+        defer { removeTemporaryDirectory(directory) }
+        let store = try makeStore(HistoryLimits(historyLimit: 2))
+        let old = try store.record(textDraft("old"), at: .at(1))
+        try store.pin(old.id)
+        for index in 2...4 { try store.record(textDraft("\(index)"), at: .at(Double(index))) }
+        #expect(store.recent.map(\.title) == ["4", "3"])
+
+        try store.unpin(old.id, at: .at(5))
+        #expect(store.recent.map(\.title) == ["old", "4", "3"])
+        try store.record(textDraft("6"), at: .at(6))
+        #expect(store.recent.map(\.title) == ["6", "old"])
+        #expect(try makeStore(HistoryLimits(historyLimit: 2)).recent.map(\.title) == ["6", "old"])
+    }
+
+    // MARK: Images and blobs
+
+    @Test("Dedups multi-image clips by every image")
+    func dedupsMultiImageClips() throws {
+        defer { removeTemporaryDirectory(directory) }
+        let store = try makeStore(HistoryLimits(inlineThreshold: 64))
+        func images(_ seeds: UInt8...) throws -> ClipDraft {
+            let items = seeds.map { PasteboardItem([ClipRepresentation(.png, pngData(width: 3, height: 3, byteCount: 300, seed: $0))]) }
+            return try #require(ClipBuilder().build(from: PasteboardSnapshot(items: items)))
+        }
+        try store.record(try images(1, 2), at: .at(1))
+        try store.record(try images(1, 3), at: .at(2))
+        let again = try store.record(try images(1, 2), at: .at(3))
+        #expect(store.recent.count == 2)
+        #expect(again.copyCount == 2)
+        #expect(try blobFiles().count == 3)
+        #expect(try store.representations(for: again.id).count == 2)
+    }
+
+    @Test("Names blob files with the builder's hashes")
+    func reusesPrecomputedHashes() throws {
+        defer { removeTemporaryDirectory(directory) }
+        let store = try makeStore(HistoryLimits(inlineThreshold: 64))
+        var draft = textDraft("chart")
+        var picture = ClipRepresentation(.tiff, Data(repeating: 3, count: 500))
+        let standIn = String(repeating: "d", count: 64)
+        picture.sha256 = standIn  // what ClipBuilder would have put here
+        draft.items[0].representations.append(picture)
+        let clip = try store.record(draft)
+        #expect(try blobFiles() == [standIn])
+        #expect(try store.representations(for: clip.id)[0].data(for: .tiff) == picture.data)
+    }
+
+    // MARK: Permissions
+
+    @Test("Keeps the database files private and tightens an existing folder")
+    func usesPrivateDatabaseFiles() throws {
+        defer { removeTemporaryDirectory(directory) }
+        let folder = directory.appendingPathComponent("Kept")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o755])
+        let store = try HistoryStore(directory: folder)
+        try store.record(textDraft("secret"))
+
+        func permissions(_ name: String) throws -> Int? {
+            let attributes = try FileManager.default.attributesOfItem(atPath: folder.appendingPathComponent(name).path)
+            return (attributes[.posixPermissions] as? NSNumber)?.intValue
+        }
+        #expect(try permissions("") == 0o700)
+        for name in ["History.sqlite", "History.sqlite-wal", "History.sqlite-shm"] {
+            #expect(try permissions(name) == 0o600, "\(name)")
+        }
+        #expect(try permissions(HistoryStore.blobDirectoryName) == 0o700)
     }
 
     @Test("Reports a missing blob file")
