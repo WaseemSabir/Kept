@@ -1,46 +1,71 @@
 import SwiftUI
 
-/// The panel's content: a large search field over the clip list.
-///
-/// For now the list is always empty; history arrives with the store (M1)
-/// and capture (M2), and the view model with the full panel (M3).
+/// The panel's content: search bar, the clip list beside the preview, and a
+/// footer of key hints (or the inline confirmation for clearing history).
 struct PanelView: View {
-    @State private var query = ""
-    @FocusState private var isSearchFocused: Bool
+    let model: PanelViewModel
+    let resources: PanelResources
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            searchBar
-            Divider()
-            emptyState
+        VStack(spacing: 0) {
+            SearchBar(model: model)
+            Hairline()
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Hairline()
+            if model.isConfirmingClear {
+                ClearConfirmationBar(model: model)
+            } else {
+                PanelFooter(model: model)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .onAppear { isSearchFocused = true }
+        .modifier(PanelAppearEffect(trigger: model.presentationCount, isEnabled: !reduceMotion))
     }
 
-    private var searchBar: some View {
-        HStack(spacing: 0) {
-            Image(systemName: "magnifyingglass")
-                .font(Theme.Typography.searchField)
-                .foregroundStyle(Theme.Colors.inkMuted)
-                .frame(width: Theme.Layout.leadingColumnWidth, alignment: .leading)
-                .accessibilityHidden(true)
-            TextField("Search", text: $query)
-                .textFieldStyle(.plain)
-                .font(Theme.Typography.searchField)
-                .foregroundStyle(Theme.Colors.ink)
-                .focused($isSearchFocused)
+    @ViewBuilder
+    private var content: some View {
+        if let emptyState = model.emptyState, emptyState.spansPanel {
+            EmptyStateView(state: emptyState)
+        } else {
+            HStack(spacing: 0) {
+                Group {
+                    if let emptyState = model.emptyState {
+                        EmptyStateView(state: emptyState)
+                    } else {
+                        ClipList(model: model, resources: resources)
+                    }
+                }
+                .frame(width: Theme.Layout.listWidth)
+                Hairline(axis: .vertical)
+                PreviewPane(model: model, resources: resources)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
-        .padding(.horizontal, Theme.Spacing.gutter)
-        .frame(height: Theme.Layout.searchBarHeight)
     }
+}
 
-    /// Sits where the first row will be, its text on the same x as the query.
-    private var emptyState: some View {
-        Text("Copy something and it shows up here.")
-            .font(Theme.Typography.rowTitle)
-            .foregroundStyle(Theme.Colors.inkMuted)
-            .padding(.leading, Theme.Spacing.gutter + Theme.Layout.leadingColumnWidth)
-            .frame(height: Theme.Layout.rowHeight)
+/// The panel's entrance: a ≤120 ms settle from 98% scale (the window fades
+/// in alongside, in AppKit). Off under Reduce Motion.
+private struct PanelAppearEffect: ViewModifier {
+    let trigger: Int
+    let isEnabled: Bool
+
+    func body(content: Content) -> some View {
+        let startScale = Theme.Motion.panelAppearScale
+        let duration = Theme.Motion.panelAppearDuration
+        if isEnabled {
+            content.keyframeAnimator(initialValue: CGFloat(1), trigger: trigger) { view, scale in
+                view.scaleEffect(scale)
+            } keyframes: { _ in
+                KeyframeTrack {
+                    MoveKeyframe(startScale)
+                    CubicKeyframe(CGFloat(1), duration: duration)
+                }
+            }
+        } else {
+            content
+        }
     }
 }

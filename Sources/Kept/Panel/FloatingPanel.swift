@@ -1,5 +1,4 @@
 import AppKit
-import Carbon.HIToolbox
 
 /// A non-activating panel that floats above other apps.
 ///
@@ -8,8 +7,9 @@ import Carbon.HIToolbox
 final class FloatingPanel: NSPanel {
     /// Called after the panel stops being key, e.g. after a click elsewhere.
     var onResignKey: (@MainActor () -> Void)?
-    /// Called when the user presses Esc.
-    var onCancel: (@MainActor () -> Void)?
+    /// Sees every key press before the focused view does. Returns `true` when
+    /// it handled the key, so it doesn't reach the search field.
+    var keyHandler: (@MainActor (KeyPress) -> Bool)?
 
     init(contentRect: NSRect) {
         // `.nonactivatingPanel` only takes effect when passed to the initializer.
@@ -50,11 +50,10 @@ final class FloatingPanel: NSPanel {
         onResignKey?()
     }
 
-    /// Esc closes the panel whichever view has focus, unless an input method
-    /// is composing text, in which case Esc belongs to the input method.
+    /// Routes key presses to `keyHandler` first, unless an input method is
+    /// composing text: then every key belongs to the input method.
     override func sendEvent(_ event: NSEvent) {
-        if event.type == .keyDown, event.keyCode == UInt16(kVK_Escape), !isComposingText {
-            onCancel?()
+        if event.type == .keyDown, !isComposingText, let keyHandler, keyHandler(KeyPress(event: event)) {
             return
         }
         super.sendEvent(event)
