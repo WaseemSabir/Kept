@@ -67,6 +67,26 @@ struct PasteboardWriterTests {
         #expect(PasteboardWriter.payload(of: image, plainTextOnly: true) == image)
     }
 
+    @Test("A clip copied as HTML alone pastes as its text")
+    func htmlOnlyPayload() {
+        let html = [PasteboardItem([ClipRepresentation(.html, string: "<p>Hello <b>world</b></p>")])]
+        #expect(PasteboardWriter.payload(of: html, plainTextOnly: true) == [
+            PasteboardItem([ClipRepresentation(.string, string: "Hello world")]),
+        ])
+        #expect(PasteboardWriter.payload(of: html, plainTextOnly: false) == html)
+    }
+
+    @Test("The plain-text shortcut reads a clipboard holding only HTML")
+    func htmlOnlyClipboard() throws {
+        let pasteboard = makePasteboard()
+        defer { pasteboard.releaseGlobally() }
+        pasteboard.clearContents()
+        pasteboard.setData(Data("<p>Hello <b>world</b></p>".utf8), forType: .html)
+
+        let conversion = try #require(ClipboardPlainText.read(from: pasteboard))
+        #expect(conversion.items == [PasteboardItem([ClipRepresentation(.string, string: "Hello world")])])
+    }
+
     @Test("Privacy markers go along with the write")
     func writesMarkers() throws {
         let pasteboard = makePasteboard()

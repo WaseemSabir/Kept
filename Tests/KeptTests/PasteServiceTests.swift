@@ -215,6 +215,46 @@ struct PasteServiceTests {
         #expect(harness.hints.shown.first?.anchor == nil)
     }
 
+    @Test("A paste goes ahead when the clip can't be moved to the top")
+    func markUsedFailureIsNotFatal() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        // Make every update of a clip's last-copied time fail.
+        let database = try SQLiteDatabase(.file(path: harness.directory.appendingPathComponent("History.sqlite").path))
+        try database.execute("""
+            CREATE TRIGGER refuse_use BEFORE UPDATE OF last_copied_at ON clips
+            BEGIN SELECT RAISE(ABORT, 'refused for the test'); END;
+            """)
+
+        let plan = try harness.paste(try harness.clip("older"))
+        #expect(plan == .paste(plainText: false))
+        #expect(harness.pasteboard.string(forType: .string) == "older")
+        #expect(harness.poster.posts == 1)
+        #expect(harness.store.recent.map(\.title) == ["newest", "older"])
+    }
+
+    @Test("Pasting as plain text reads only the text, not the picture next to it")
+    func plainTextSkipsPictures() throws {
+        let harness = try Harness(texts: [])
+        defer { harness.tearDown() }
+        let draft = try #require(ClipBuilder().build(from: PasteboardSnapshot(items: [PasteboardItem([
+            ClipRepresentation(.string, string: "Quarterly numbers"),
+            ClipRepresentation(.png, Data(repeating: 0x42, count: 100_000)),
+        ])])))
+        let clip = try harness.store.record(draft)
+        // With the picture's file gone, only a plain-text paste still works.
+        let blobs = harness.directory.appendingPathComponent("blobs")
+        for name in try FileManager.default.contentsOfDirectory(atPath: blobs.path) {
+            try FileManager.default.removeItem(at: blobs.appendingPathComponent(name))
+        }
+        #expect(throws: (any Error).self) { try harness.paste(clip) }
+
+        let plan = try harness.paste(clip, .paste(alternate: true))
+        #expect(plan.plainText)
+        #expect(harness.pasteboard.string(forType: .string) == "Quarterly numbers")
+        #expect(harness.pasteboard.data(forType: .png) == nil)
+    }
+
     @Test("The plain-text shortcut leaves a clipboard without text alone")
     func clipboardWithoutText() throws {
         let harness = try Harness()

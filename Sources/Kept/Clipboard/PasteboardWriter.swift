@@ -45,21 +45,15 @@ struct PasteboardWriter {
 
     /// What to write for a clip: every representation, or only plain text.
     ///
-    /// Plain text keeps each item's string (or its URL, or the text of its
-    /// RTF). Clips with no text at all, such as images, are written whole.
+    /// Plain text keeps each item's `PasteboardItem.plainText` (its string,
+    /// else its URL, else the text of its RTF or HTML), so a clip copied as
+    /// HTML alone still pastes as plain text. Clips with no text at all,
+    /// such as images, are written whole.
     static func payload(of items: [PasteboardItem], plainTextOnly: Bool) -> [PasteboardItem] {
         guard plainTextOnly else { return items }
-        let texts = items.compactMap(plainText(of:))
+        let texts = items.compactMap(\.plainText)
         guard !texts.isEmpty else { return items }
         return texts.map { PasteboardItem([ClipRepresentation(.string, string: $0)]) }
-    }
-
-    /// An item's text: its string, else its URL, else the text of its RTF.
-    static func plainText(of item: PasteboardItem) -> String? {
-        if let data = item.data(for: .string) ?? item.data(for: .url) {
-            return String(decoding: data, as: UTF8.self)
-        }
-        return item.data(for: .rtf).flatMap(RichTextDecoder.plainText(fromRTF:))
     }
 
     private static func nativeType(_ type: PasteboardType) -> NSPasteboard.PasteboardType {

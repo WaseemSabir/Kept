@@ -13,17 +13,22 @@ struct ClipPreview: Equatable, Sendable {
         case files([String])
         /// Why nothing can be shown.
         case unavailable(String)
+        /// A big clip is still being read, off the main actor.
+        case loading
     }
 
     var content: Content
     /// Lines in the full text, for text clips.
     var lineCount: Int?
-    /// The full text's length when `content` holds only its start.
+    /// The full text's length in characters when `content` holds only its start.
     var truncatedFrom: Int?
+    /// How many characters `content` shows when it holds only the start.
+    var shownCharacterCount: Int?
 
-    init(_ content: Content, lineCount: Int? = nil, truncatedFrom: Int? = nil) {
+    init(_ content: Content, lineCount: Int? = nil, truncatedFrom: Int? = nil, shownCharacterCount: Int? = nil) {
         self.content = content
         self.lineCount = lineCount
         self.truncatedFrom = truncatedFrom
+        self.shownCharacterCount = shownCharacterCount
     }
 }

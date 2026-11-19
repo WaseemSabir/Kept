@@ -5,10 +5,12 @@ import SwiftUI
 struct PreviewPane: View {
     let model: PanelViewModel
     let resources: PanelResources
+    /// A big clip's preview once it has loaded off the main actor.
+    @State private var loaded: (clip: Clip, preview: ClipPreview)? = nil
 
     var body: some View {
         if let clip = model.selectedClip {
-            let preview = model.preview(for: clip)
+            let preview = shownPreview(for: clip)
             VStack(alignment: .leading, spacing: 14) {
                 PreviewContent(clip: clip, preview: preview, resources: resources)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -16,9 +18,20 @@ struct PreviewPane: View {
                 FactList(facts: model.facts(for: clip, preview: preview), icons: resources.icons)
             }
             .padding(Theme.Spacing.previewInset)
+            .task(id: clip) {
+                // Cancelled when another clip is selected.
+                guard preview.content == .loading, let result = await model.loadPreview(for: clip) else { return }
+                loaded = (clip, result)
+            }
         } else {
             Color.clear
         }
+    }
+
+    private func shownPreview(for clip: Clip) -> ClipPreview {
+        let preview = model.preview(for: clip)
+        if preview.content == .loading, let loaded, loaded.clip == clip { return loaded.preview }
+        return preview
     }
 }
 
@@ -40,7 +53,8 @@ private struct PreviewContent: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
                     if let total = preview.truncatedFrom {
-                        Text("Showing the first \(PreviewLoader.maxCharacters.formatted()) of \(total.formatted()) characters.")
+                        let shown = preview.shownCharacterCount ?? PreviewLoader.maxCharacters
+                        Text("Showing the first \(shown.formatted()) of \(total.formatted()) characters.")
                             .font(Theme.Typography.rowMeta)
                             .foregroundStyle(Theme.Colors.inkMuted)
                     }
@@ -102,6 +116,10 @@ private struct PreviewContent: View {
             Text(message)
                 .font(Theme.Typography.preview)
                 .foregroundStyle(Theme.Colors.inkMuted)
+
+        case .loading:
+            // A big clip is being read; it shows in a moment.
+            Color.clear
         }
     }
 

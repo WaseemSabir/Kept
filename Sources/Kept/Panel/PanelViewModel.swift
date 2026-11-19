@@ -76,13 +76,8 @@ final class PanelViewModel {
     private let pasteOptions: @MainActor () -> PasteOptions
     private let appName: @MainActor (String) -> String?
     private let capturePaused: @MainActor () -> Bool
-    @ObservationIgnored private var cachedPreview: (key: PreviewKey, preview: ClipPreview)?
-
-    private struct PreviewKey: Equatable {
-        let id: UUID
-        let lastCopiedAt: Date
-        let copyCount: Int
-    }
+    /// Makes previews (big clips off the main actor) and keeps recent ones.
+    private let previews: PreviewLoader
 
     init(
         store: HistoryStore?,
@@ -98,6 +93,7 @@ final class PanelViewModel {
         self.pasteOptions = pasteOptions
         self.appName = appName
         self.capturePaused = capturePaused
+        previews = PreviewLoader(store: store)
         refresh(selecting: .first)
         observeHistory()
     }
@@ -224,13 +220,16 @@ final class PanelViewModel {
         }
     }
 
-    /// The selected clip's preview, loaded once per selection.
+    /// The clip's preview: kept from before, or made now for a small clip;
+    /// `.loading` while a big one still has to be read (`loadPreview(for:)`).
     func preview(for clip: Clip) -> ClipPreview {
-        let key = PreviewKey(id: clip.id, lastCopiedAt: clip.lastCopiedAt, copyCount: clip.copyCount)
-        if let cachedPreview, cachedPreview.key == key { return cachedPreview.preview }
-        let preview = PreviewLoader.preview(of: clip, store: store)
-        cachedPreview = (key, preview)
-        return preview
+        previews.preview(for: clip)
+    }
+
+    /// Reads a big clip's preview off the main actor; `nil` when the caller
+    /// was cancelled (another clip was selected first).
+    func loadPreview(for clip: Clip) async -> ClipPreview? {
+        await previews.load(clip)
     }
 
     func facts(for clip: Clip, preview: ClipPreview) -> [ClipFact] {

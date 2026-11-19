@@ -56,13 +56,30 @@ final class PasteService: ClipPasting {
 
     func prepare(_ clip: Clip, for request: PasteRequest) throws -> PastePlan {
         let plan = plan(for: request)
-        let items = try store.representations(for: clip.id)
+        let items = try itemsToWrite(for: clip, plainTextOnly: plan.plainText)
         try write(
             PasteboardWriter.payload(of: items, plainTextOnly: plan.plainText),
             sourceBundleID: clip.sourceBundleID
         )
-        try store.markUsed(clip.id)
+        do {
+            try store.markUsed(clip.id)
+        } catch {
+            // The clip is on the pasteboard; only its place in the history
+            // is stale, which is no reason to stop the paste.
+            Log.paste.error("Couldn't move a pasted clip to the top: \(String(describing: error), privacy: .public)")
+        }
         return plan
+    }
+
+    /// The clip's items to write. For plain text only its text types are
+    /// read, so the picture an app put next to its text isn't loaded; a
+    /// clip without text (an image) is read whole, as it's written whole.
+    private func itemsToWrite(for clip: Clip, plainTextOnly: Bool) throws -> [PasteboardItem] {
+        if plainTextOnly {
+            let texts = try store.representations(for: clip.id, types: Set(PasteboardItem.textTypes))
+            if PasteboardItem.plainText(of: texts) != nil { return texts }
+        }
+        return try store.representations(for: clip.id)
     }
 
     func complete(_ plan: PastePlan, anchor: CGRect?) {
