@@ -182,7 +182,9 @@ Notes (A4, UI/UX fixes and polish):
   selection is announced ("…, 9 minutes ago, from Safari. 4 of 15."). The list's selected
   child isn't exposed as such (SwiftUI has no API for it); announcements stand in.
 - Matched query words are semibold in row titles, and a row whose first match would be
-  truncated starts just before it. The dark marker is `#FFD84D` @ 36% (≈5:1 for white text).
+  truncated starts just before it. In dark mode the marker is a near-opaque yellow
+  (`#F2CC47` @ 94%) under dark ink (`#1C1C1E`), like a real highlighter and the app icon; every
+  marked text clears 4.5:1 in both modes.
 - Excluded password managers that aren't installed show their names. The welcome window,
   clipboard access note and an Increase Contrast scene are in the snapshots.
 - Needs a hand check on a Mac: VoiceOver announcements, the menu bar icon's ⌘-drag and

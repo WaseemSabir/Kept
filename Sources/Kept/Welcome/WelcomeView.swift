@@ -47,15 +47,18 @@ struct WelcomeView: View {
                     .padding(.top, 4)
             }
             HStack(spacing: 10) {
-                Button {
-                    onOpenKept()
-                } label: {
-                    Text("Open Kept").frame(minWidth: Theme.WelcomeLayout.buttonWidth)
-                }
+                // macOS order: the default button on the right. ⏎ opens
+                // Kept; Esc is Done.
                 Button {
                     onDone()
                 } label: {
                     Text("Done").frame(minWidth: Theme.WelcomeLayout.buttonWidth)
+                }
+                .keyboardShortcut(.cancelAction)
+                Button {
+                    onOpenKept()
+                } label: {
+                    Text("Open Kept").frame(minWidth: Theme.WelcomeLayout.buttonWidth)
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
@@ -66,7 +69,6 @@ struct WelcomeView: View {
         .multilineTextAlignment(.center)
         .padding(Theme.WelcomeLayout.padding)
         .frame(width: Theme.WelcomeLayout.width)
-        .onExitCommand { onDone() }
     }
 
     /// The open line with the shortcut a weight heavier.

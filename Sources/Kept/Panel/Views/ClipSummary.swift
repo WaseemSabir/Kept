@@ -4,7 +4,8 @@ import SwiftUI
 /// A clip drawn in one line, by kind: prose in SF Pro, code in SF Mono, a
 /// link as its host and muted path, a color as its swatch, an image as its
 /// thumbnail, files as their icon and name. No kind labels. When selected,
-/// the highlighter goes behind the text only, never over a glyph. While
+/// the highlighter goes behind the text only, never over a glyph, and the
+/// text takes the marked ink (dark on yellow in dark mode). While
 /// searching, the words that match are set a weight heavier, in the same ink,
 /// and a text row whose first match would be truncated starts just before it.
 struct ClipSummary: View {
@@ -13,6 +14,7 @@ struct ClipSummary: View {
     /// The query's words; where they match, the text is semibold.
     var matchTokens: [String] = []
     let resources: PanelResources
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         switch clip.kind {
@@ -50,7 +52,7 @@ struct ClipSummary: View {
     private func line(_ text: AttributedString, isCode: Bool) -> some View {
         Text(text)
             .font(isCode ? Theme.Typography.rowCode : Theme.Typography.rowTitle)
-            .foregroundStyle(Theme.Colors.ink)
+            .foregroundStyle(isMarked ? Theme.Colors.markedInk(colorScheme) : Theme.Colors.ink)
             .lineLimit(1)
             .truncationMode(.tail)
             .marked(isMarked)
@@ -64,13 +66,14 @@ struct ClipSummary: View {
             : twoTone(clip.title, "", isCode: false)
     }
 
-    /// `primary` in ink, then `secondary` muted, matches emphasized in both.
+    /// `primary` in ink, then `secondary` muted (both in the marked inks
+    /// when selected), matches emphasized in both.
     private func twoTone(_ primary: String, _ secondary: String, isCode: Bool) -> AttributedString {
         typealias Foreground = AttributeScopes.SwiftUIAttributes.ForegroundColorAttribute
         var first = emphasized(primary, isCode: isCode)
-        first[Foreground.self] = Theme.Colors.ink
+        first[Foreground.self] = isMarked ? Theme.Colors.markedInk(colorScheme) : Theme.Colors.ink
         var second = emphasized(secondary, isCode: isCode)
-        second[Foreground.self] = Theme.Colors.inkMuted
+        second[Foreground.self] = isMarked ? Theme.Colors.markedInkMuted(colorScheme) : Theme.Colors.inkMuted
         return first + second
     }
 

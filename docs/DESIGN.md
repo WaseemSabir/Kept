@@ -29,17 +29,22 @@ There is exactly one brand color.
 | `inkMuted`   | `secondaryLabelColor`         | `secondaryLabelColor`         | Metadata, hints |
 | `inkFaint`   | `tertiaryLabelColor`          | `tertiaryLabelColor`          | Quick-paste numbers, placeholders |
 | `hairline`   | `separatorColor`              | `separatorColor`              | Pane divider, footer rule |
-| `marker`     | `#FFD84D` @ 60% under text    | `#FFD84D` @ 36% under text    | Selection highlight, active filter |
-| `markerInk`  | `#8A6A00`                     | `#FFE59A`                     | Active filter text, on the marker |
+| `marker`     | `#FFD84D` @ 60% under text    | `#F2CC47` @ 94% under text    | Selection highlight, active filter |
+| `markedInk`  | `labelColor`                  | `#1C1C1E`                     | Text on the marker (the selected row's title) |
+| `markedInkMuted` | black @ 62%               | `#1C1C1E` @ 75%               | Muted text on the marker (a link's path, file names) |
+| `markerInk`  | `#6E5400`                     | `#1C1C1E`                     | Active filter text, on the marker |
 | `markerNotch`| `#F5C400`                     | `#E8B73A`                     | Pin notch (full strength, so a 3 pt mark reads) |
 
-With Increase Contrast on, `marker` rises to 95% (light) / `#E8B73A` @ 50%
-(dark) and `markerInk` darkens to `#5C4600` / lightens to `#FFF4CC`.
+With Increase Contrast on, `marker` rises to 95% (light) / `#FFD84D` at
+full strength (dark) and `markerInk` darkens to `#5C4600` in light mode.
 
-The dark marker is the light one's yellow, as strong as white text allows:
-over the dark material (≈ `#1E1E1E`–`#282828`) it comes to about
-`#6F612F`–`#756735`, and label text on it keeps 4.6–5:1. Any stronger and
-the text drops under 4.5:1; the old `#E8B73A` @ 30% read as a brown band.
+Dark mode marks a line the way a real highlighter (and the app icon's
+marked line) does: near-opaque yellow under dark ink. A translucent yellow
+under white text can't get brighter than a dull olive before the text
+drops under 4.5:1. Every marked text clears 4.5:1: in light mode label
+text ≈12:1, muted ≈5.6:1, the filter's `#6E5400` ≈5.5:1; in dark mode
+`#1C1C1E` ≈9.8:1 and its 75% ≈5.5:1. Only what sits on the marker changes
+color; the age, icons, swatch and thumbnail beside it don't.
 
 `marker` is a highlighter, not a button color: it is drawn as a soft,
 rounded swipe *behind* the selected row's text, the way you'd mark a line on
@@ -104,8 +109,10 @@ the screen's visible frame). Two panes under one search bar, a quiet footer.
   age · source app icon. The icons form one column on the trailing edge
   and the age sits against them, so titles get the width.
 - The highlighter marks the row's *text* only, never the glyph, and runs a
-  little past both ends with the icon's chisel slant. The active filter
-  token gets the same mark, smaller.
+  little past both ends with the icon's chisel slant. The marked text
+  (host and path, code, semibold matches, the "…") takes the marked inks:
+  dark on yellow in dark mode. The active filter token gets the same mark,
+  smaller.
 - Filter tokens are quiet text at the end of the search bar, not a
   segmented control.
 - The footer shows only hints that apply now; with nothing selected it
@@ -355,14 +362,15 @@ title bar, 380 pt wide, everything centered like a modern alert:
   │ …Privacy & Security › Paste from Other Apps…     │  asks or denies
   └             [Open Privacy & Security…]           ┘  (wash, hairline)
            ☐ Open Kept at login
-        [ Open Kept ]   [  Done  ]                     large, Done default
+          [  Done  ]   [ Open Kept ]                   large, Open Kept default
 ```
 
 - No marketing, no feature tour: where Kept is, how to open it, the one
   permission it will ask for, and login.
-- "Open Kept" closes the window, waits for activation to go back to the
-  user's app, then opens the panel, so its first paste lands there. "Done"
-  (⏎, esc) closes it and returns focus like Settings.
+- "Open Kept" (the default button, ⏎) closes the window, waits for
+  activation to go back to the user's app, then opens the panel, so its
+  first paste lands there. "Done" (esc) closes it and returns focus like
+  Settings.
 - Snapshots: `welcome-light/dark.png`, `welcome-clipboard-denied-*`, and
   `settings-privacy-clipboard-access-*`.
 

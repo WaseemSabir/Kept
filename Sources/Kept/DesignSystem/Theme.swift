@@ -23,29 +23,40 @@ enum Theme {
         static let wash = Color.primary.opacity(0.06)
 
         /// The highlighter drawn behind the selected row's text and the
-        /// active filter. Never a solid control fill. In dark mode it's the
-        /// same bright yellow as in light mode, a little stronger than a
-        /// glaze, so it reads as a marker rather than a brown band; white
-        /// text on it stays near 5:1 on the dark material.
+        /// active filter. Never a solid control fill. Light mode glazes the
+        /// line yellow under the usual ink; dark mode draws it the way a
+        /// real highlighter and the app icon do, a near-opaque yellow under
+        /// dark ink (`markedInk`).
         static let marker = AdaptiveColor(
             light: sRGB(0xFFD84D, opacity: 0.6),
-            dark: sRGB(0xFFD84D, opacity: 0.36),
+            dark: sRGB(0xF2CC47, opacity: 0.94),
             lightIncreasedContrast: sRGB(0xFFD84D, opacity: 0.95),
-            darkIncreasedContrast: sRGB(0xE8B73A, opacity: 0.5)
+            darkIncreasedContrast: sRGB(0xFFD84D)
         )
         /// The pin notch: the marker at full strength, so a 3 pt mark reads.
         static let markerNotch = AdaptiveColor(
             light: sRGB(0xF5C400),
             dark: sRGB(0xE8B73A)
         )
-        /// The active filter's text, on the marker. Pale in dark mode, so
-        /// it holds its contrast on the brighter marker.
+        /// The active filter's text, on the marker.
         static let markerInk = AdaptiveColor(
-            light: sRGB(0x8A6A00),
-            dark: sRGB(0xFFE59A),
+            light: sRGB(0x6E5400),
+            dark: sRGB(0x1C1C1E),
             lightIncreasedContrast: sRGB(0x5C4600),
-            darkIncreasedContrast: sRGB(0xFFF4CC)
+            darkIncreasedContrast: sRGB(0x1C1C1E)
         )
+
+        /// Text on the marker (the selected row's title): the usual ink in
+        /// light mode, the icon's dark line on yellow in dark mode.
+        static func markedInk(_ scheme: ColorScheme) -> Color {
+            scheme == .dark ? sRGB(0x1C1C1E) : ink
+        }
+
+        /// Muted text on the marker (a link's path, file names). Stronger
+        /// than `inkMuted`, which falls under 4.5:1 on yellow.
+        static func markedInkMuted(_ scheme: ColorScheme) -> Color {
+            scheme == .dark ? sRGB(0x1C1C1E, opacity: 0.75) : Color.black.opacity(0.62)
+        }
 
         static func sRGB(_ hex: UInt32, opacity: Double = 1) -> Color {
             Color(
