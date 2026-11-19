@@ -105,6 +105,8 @@ enum Theme {
         static let previewInset: CGFloat = 16
         /// Between a row's kind glyph (swatch, thumbnail, icon) and its text.
         static let glyphGap: CGFloat = 8
+        /// Between a row's age and its source app icon.
+        static let metaGap: CGFloat = 8
     }
 
     @MainActor
@@ -124,8 +126,6 @@ enum Theme {
         /// The highlighter behind the active filter token.
         static let tokenMarkerHeight: CGFloat = 17
         static let sourceIconSize: CGFloat = 16
-        /// Wide enough for "Yesterday", so source icons line up.
-        static let ageColumnWidth: CGFloat = 52
         static let rowThumbnailSize = CGSize(width: 30, height: 20)
         static let rowGlyphSize: CGFloat = 16
         static let colorSwatchSize: CGFloat = 14

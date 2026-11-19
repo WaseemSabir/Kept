@@ -1,8 +1,8 @@
 import KeptCore
 import SwiftUI
 
-/// One 34 pt row: quick-paste number, the clip drawn by kind, the source
-/// app's icon and the clip's age.
+/// One 34 pt row: quick-paste number, the clip drawn by kind, the clip's
+/// age and the source app's icon.
 struct ClipRow: View {
     let clip: Clip
     /// 1–9 for the first nine rows (⌘1–⌘9).
@@ -23,14 +23,16 @@ struct ClipRow: View {
             ClipSummary(clip: clip, isMarked: isSelected, resources: resources)
                 .layoutPriority(1)
             Spacer(minLength: Theme.Spacing.gutter)
-            sourceIcon
-                .padding(.trailing, 6)
+            // The age sits against the icon, and the icons form one column
+            // on the trailing edge, however long the age is.
             Text(AgeFormatter.shortAge(of: clip.lastCopiedAt, now: now))
                 .font(Theme.Typography.rowMeta)
                 .monospacedDigit()
                 .foregroundStyle(Theme.Colors.inkMuted)
                 .lineLimit(1)
-                .frame(width: Theme.Layout.ageColumnWidth, alignment: .trailing)
+                .fixedSize()
+                .padding(.trailing, Theme.Spacing.metaGap)
+            sourceIcon
         }
         .padding(.horizontal, Theme.Spacing.gutter)
         .frame(height: Theme.Layout.rowHeight)

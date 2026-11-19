@@ -40,13 +40,25 @@ final class IconCache {
         if let cached = apps[bundleID] { return cached }
         let app: App
         if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
-            let displayName = FileManager.default.displayName(atPath: url.path)
-            let name = displayName.hasSuffix(".app") ? String(displayName.dropLast(4)) : displayName
-            app = App(name: name, icon: NSWorkspace.shared.icon(forFile: url.path))
+            app = App(name: Self.displayName(ofAppAt: url), icon: NSWorkspace.shared.icon(forFile: url.path))
         } else {
             app = App(name: nil, icon: nil)
         }
         apps[bundleID] = app
         return app
+    }
+
+    /// The app's own name ("Xcode"), localized when it has one, rather than
+    /// its file name, which may have been renamed ("Xcode_26.6").
+    private static func displayName(ofAppAt url: URL) -> String {
+        let bundle = Bundle(url: url)
+        let keys = ["CFBundleDisplayName", "CFBundleName"]
+        for dictionary in [bundle?.localizedInfoDictionary, bundle?.infoDictionary] {
+            for key in keys {
+                if let name = dictionary?[key] as? String, !name.isEmpty { return name }
+            }
+        }
+        let fileName = FileManager.default.displayName(atPath: url.path)
+        return fileName.hasSuffix(".app") ? String(fileName.dropLast(4)) : fileName
     }
 }

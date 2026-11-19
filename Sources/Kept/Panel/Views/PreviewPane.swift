@@ -27,7 +27,6 @@ private struct PreviewContent: View {
     let clip: Clip
     let preview: ClipPreview
     let resources: PanelResources
-    @Environment(\.isStaticRendering) private var isStaticRendering
 
     var body: some View {
         switch preview.content {
@@ -108,17 +107,11 @@ private struct PreviewContent: View {
 
     private static let maxFiles = 200
 
-    /// Scrolls `content` live; offscreen renders draw it unscrolled.
-    @ViewBuilder
     private func scrolling<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        if isStaticRendering {
+        ScrollView(.vertical) {
             content()
-        } else {
-            ScrollView(.vertical) {
-                content()
-            }
-            .scrollIndicators(.automatic)
         }
+        .scrollIndicators(.automatic)
     }
 }
 

@@ -6,7 +6,6 @@ import SwiftUI
 struct SearchBar: View {
     @Bindable var model: PanelViewModel
     @FocusState private var isFocused: Bool
-    @Environment(\.isStaticRendering) private var isStaticRendering
 
     var body: some View {
         HStack(spacing: 0) {
@@ -26,22 +25,14 @@ struct SearchBar: View {
         .onChange(of: model.presentationCount) { isFocused = true }
     }
 
-    @ViewBuilder
     private var field: some View {
-        if isStaticRendering {
-            Text(model.query.isEmpty ? "Search" : model.query)
-                .font(Theme.Typography.searchField)
-                .foregroundStyle(model.query.isEmpty ? Theme.Colors.inkFaint : Theme.Colors.ink)
-                .lineLimit(1)
-        } else {
-            TextField("Search", text: $model.query)
-                .textFieldStyle(.plain)
-                .font(Theme.Typography.searchField)
-                .foregroundStyle(Theme.Colors.ink)
-                .focused($isFocused)
-                .focusEffectDisabled()
-                .accessibilityLabel("Search clips")
-        }
+        TextField("Search", text: $model.query)
+            .textFieldStyle(.plain)
+            .font(Theme.Typography.searchField)
+            .foregroundStyle(Theme.Colors.ink)
+            .focused($isFocused)
+            .focusEffectDisabled()
+            .accessibilityLabel("Search clips")
     }
 }
 

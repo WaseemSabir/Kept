@@ -1,16 +1,23 @@
 import SwiftUI
 
-/// Key hints for the main actions; on the right, a problem to report or
-/// that capture is paused.
+/// Key hints for what the keys do right now; on the right, a problem to
+/// report or that capture is paused.
 struct PanelFooter: View {
     let model: PanelViewModel
 
     var body: some View {
         HStack(spacing: 14) {
-            KeyHint(keys: "⏎", label: model.primaryActionTitle)
-            KeyHint(keys: "⌥⏎", label: model.plainTextActionTitle)
-            KeyHint(keys: "⌘P", label: model.pinActionTitle)
-            KeyHint(keys: "⌘⌫", label: "Delete")
+            // Hints only for what the keys can do right now.
+            if model.selectedClip != nil {
+                KeyHint(keys: "⏎", label: model.primaryActionTitle)
+                KeyHint(keys: "⌥⏎", label: model.plainTextActionTitle)
+                KeyHint(keys: "⌘P", label: model.pinActionTitle)
+                KeyHint(keys: "⌘⌫", label: "Delete")
+            } else if model.isSearching {
+                KeyHint(keys: "esc", label: "Clear search")
+            } else {
+                KeyHint(keys: "esc", label: "Close")
+            }
             Spacer(minLength: Theme.Spacing.gutter)
             if let notice = model.notice {
                 Text(notice)

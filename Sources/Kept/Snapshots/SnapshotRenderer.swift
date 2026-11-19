@@ -60,7 +60,7 @@ enum SnapshotRenderer {
         Scene(name: "selected-color") { select($0) { $0.kind == .color } },
         Scene(name: "selected-rich-text") { select($0) { $0.kind == .richText } },
         Scene(name: "search") { $0.query = "pasteboard" },
-        Scene(name: "no-results") { $0.query = "kubernetes" },
+        Scene(name: "no-results") { $0.query = "zebra" },
         Scene(name: "filter-links") { $0.filter = .links },
         Scene(name: "confirm-clear") { $0.perform(.requestClearUnpinned) },
         Scene(name: "paused", isPaused: true),
@@ -100,9 +100,6 @@ enum SnapshotRenderer {
         let sampleResources = PanelResources(icons: icons, thumbnails: sampleThumbnails)
         let emptyResources = PanelResources(icons: icons, thumbnails: ThumbnailCache(store: empty))
 
-        let staticDirectory = directory.appendingPathComponent("static", isDirectory: true)
-        try FileManager.default.createDirectory(at: staticDirectory, withIntermediateDirectories: true)
-
         var written = 0
         for scene in scenes {
             for appearance in Appearance.allCases {
@@ -114,15 +111,13 @@ enum SnapshotRenderer {
                     capturePaused: { isPaused }
                 )
                 model.prepareForShow()
-                scene.configure(model)
                 let view = PanelView(model: model, resources: scene.history == .sample ? sampleResources : emptyResources)
-                let fileName = "\(scene.name)-\(appearance.rawValue).png"
-
-                let png = try await renderInWindow(view, appearance: appearance)
-                try png.write(to: directory.appendingPathComponent(fileName))
-                let staticPNG = try renderStatically(view, appearance: appearance)
-                try staticPNG.write(to: staticDirectory.appendingPathComponent(fileName))
-                written += 2
+                let png = try await renderInWindow(view, appearance: appearance) {
+                    // After the search field has taken focus, as if typed.
+                    scene.configure(model)
+                }
+                try png.write(to: directory.appendingPathComponent("\(scene.name)-\(appearance.rawValue).png"))
+                written += 1
             }
         }
         return written
@@ -130,8 +125,12 @@ enum SnapshotRenderer {
 
     /// Draws `view` in a borderless window that's never shown, with AppKit's
     /// `cacheDisplay`, so AppKit-backed views (the search field, scroll views)
-    /// draw as they do on screen.
-    private static func renderInWindow(_ view: PanelView, appearance: Appearance) async throws -> Data {
+    /// draw as they do on screen. `prepare` runs once the view has appeared.
+    private static func renderInWindow(
+        _ view: PanelView,
+        appearance: Appearance,
+        prepare: () -> Void
+    ) async throws -> Data {
         let size = Theme.Layout.panelSize
         let root = view
             .frame(width: size.width, height: size.height)
@@ -152,7 +151,10 @@ enum SnapshotRenderer {
         defer { window.close() }
 
         hostingView.layoutSubtreeIfNeeded()
-        // Let SwiftUI settle: layout passes, `onAppear`, cached thumbnails.
+        // Let SwiftUI settle (layout passes, `onAppear`, focus), then set the
+        // scene up and let it settle again.
+        try await Task.sleep(for: .milliseconds(150))
+        prepare()
         try await Task.sleep(for: .milliseconds(250))
         hostingView.layoutSubtreeIfNeeded()
         hostingView.displayIfNeeded()
@@ -173,23 +175,6 @@ enum SnapshotRenderer {
         hostingView.cacheDisplay(in: hostingView.bounds, to: bitmap)
         guard let png = bitmap.representation(using: .png, properties: [:]) else {
             throw RenderError(description: "Couldn't encode the window render")
-        }
-        return png
-    }
-
-    /// Draws `view` with SwiftUI's `ImageRenderer`, which can't draw
-    /// AppKit-backed views, so the search field and lists render statically.
-    private static func renderStatically(_ view: PanelView, appearance: Appearance) throws -> Data {
-        let size = Theme.Layout.panelSize
-        let root = view
-            .frame(width: size.width, height: size.height)
-            .background(Theme.Colors.panelBackground)
-            .environment(\.colorScheme, appearance.colorScheme)
-            .environment(\.isStaticRendering, true)
-        let renderer = ImageRenderer(content: root)
-        renderer.scale = 2
-        guard let image = renderer.cgImage, let png = ImageTranscoder.pngData(from: image) else {
-            throw RenderError(description: "Couldn't render statically")
         }
         return png
     }
