@@ -22,6 +22,21 @@ AppKit and SwiftUI), private, and open source.
 - macOS 14 Sonoma or later
 - To build: Xcode 26 or later (Swift 6.2+)
 
+## Install
+
+Download `Kept-<version>.dmg` from
+[Releases](https://github.com/WaseemSabir/Kept/releases), open it and drag Kept
+to Applications.
+
+- If a release isn't notarized, macOS blocks the first launch. On macOS 15 and
+  later, open Kept once, then click **Open Anyway** in System Settings › Privacy
+  & Security. On macOS 14, Control-click Kept and choose **Open**.
+- Pasting needs Accessibility access. Releases without a Developer ID signature
+  lose it with every update: remove Kept from System Settings › Privacy &
+  Security › Accessibility and add it again.
+
+[RELEASING.md](docs/RELEASING.md) has the details.
+
 ## Build from source
 
 ```sh
@@ -56,7 +71,8 @@ example a self-signed one) through `SIGN_IDENTITY`.
 
 ## Contributing
 
-Read [CLAUDE.md](CLAUDE.md) for the ground rules, then
+Read [CONTRIBUTING.md](CONTRIBUTING.md) and [CLAUDE.md](CLAUDE.md) for the
+ground rules, then
 [ARCHITECTURE.md](docs/ARCHITECTURE.md), [DESIGN.md](docs/DESIGN.md) and
 [RESEARCH.md](docs/RESEARCH.md).
 
