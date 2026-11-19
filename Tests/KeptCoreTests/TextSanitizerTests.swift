@@ -188,4 +188,12 @@ struct TextSanitizerTests {
         }
         #expect(TextSanitizer.lineCount(of: text) == expected)
     }
+
+    @Test("Shows as many lines as it counts, even with dropped characters between CR and LF", arguments: [
+        "a\r\u{0}\nb", "a\r\u{200B}\nb", "a\r\u{FEFF}\u{7}\nb", "a\r\nb", "a\r\n\r\nb", "\r\u{0}\n",
+    ])
+    func showsTheLinesItCounts(text: String) {
+        let shown = multiline(text).text
+        #expect(shown.split(separator: "\n", omittingEmptySubsequences: false).count == TextSanitizer.lineCount(of: text))
+    }
 }

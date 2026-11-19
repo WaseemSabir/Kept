@@ -131,8 +131,11 @@ public enum TextSanitizer {
                 guard append(scalar) else { break }
                 continue
             }
-            guard keeps(scalar) else { continue }
+            // A CR and an LF with anything between them are two line
+            // breaks, as `lineCount(of:)` counts them, even if that
+            // something is dropped.
             afterCarriageReturn = false
+            guard keeps(scalar) else { continue }
             switch caps.step(scalar) {
             case .dropped:
                 continue
