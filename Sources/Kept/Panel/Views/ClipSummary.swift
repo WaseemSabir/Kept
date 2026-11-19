@@ -8,6 +8,8 @@ import SwiftUI
 /// text takes the marked ink (dark on yellow in dark mode). While
 /// searching, the words that match are set a weight heavier, in the same ink,
 /// and a text row whose first match would be truncated starts just before it.
+/// A clip the user named shows its name, then its content muted, after
+/// its glyph.
 struct ClipSummary: View {
     let clip: Clip
     let isMarked: Bool
@@ -17,6 +19,20 @@ struct ClipSummary: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
+        if let name = clip.customTitle {
+            HStack(spacing: Theme.Spacing.glyphGap) {
+                if ClipGlyph.shows(clip) {
+                    ClipGlyph(clip: clip, resources: resources)
+                }
+                line(twoTone(name, "  " + clip.title, isCode: false), isCode: false)
+            }
+        } else {
+            summary
+        }
+    }
+
+    @ViewBuilder
+    private var summary: some View {
         switch clip.kind {
         case .text, .richText:
             // A match deep in the text would be truncated away; start the
@@ -29,21 +45,17 @@ struct ClipSummary: View {
             line(twoTone(parts.host, parts.rest, isCode: false), isCode: false)
         case .color:
             HStack(spacing: Theme.Spacing.glyphGap) {
-                ColorSwatch(hex: clip.metadata.colorHex ?? clip.title, size: Theme.Layout.colorSwatchSize)
+                ClipGlyph(clip: clip, resources: resources)
                 line(emphasized(clip.title, isCode: true), isCode: true)
             }
         case .image:
             HStack(spacing: Theme.Spacing.glyphGap) {
-                RowThumbnail(clip: clip, thumbnails: resources.thumbnails)
+                ClipGlyph(clip: clip, resources: resources)
                 line(emphasized(clip.title, isCode: false), isCode: false)
             }
         case .file:
             HStack(spacing: Theme.Spacing.glyphGap) {
-                Image(nsImage: resources.icons.fileIcon(forName: ClipDisplay.firstFileName(of: clip)))
-                    .resizable()
-                    .interpolation(.high)
-                    .frame(width: Theme.Layout.rowGlyphSize, height: Theme.Layout.rowGlyphSize)
-                    .accessibilityHidden(true)
+                ClipGlyph(clip: clip, resources: resources)
                 line(fileText, isCode: false)
             }
         }
@@ -90,6 +102,38 @@ struct ClipSummary: View {
             result += piece
         }
         return result
+    }
+}
+
+/// What stands before a clip's text in a row: a color's swatch, an
+/// image's thumbnail, a file's icon. Text and links have none
+/// (`shows(_:)`).
+struct ClipGlyph: View {
+    let clip: Clip
+    let resources: PanelResources
+
+    static func shows(_ clip: Clip) -> Bool {
+        switch clip.kind {
+        case .color, .image, .file: true
+        case .text, .richText, .link: false
+        }
+    }
+
+    var body: some View {
+        switch clip.kind {
+        case .color:
+            ColorSwatch(hex: clip.metadata.colorHex ?? clip.title, size: Theme.Layout.colorSwatchSize)
+        case .image:
+            RowThumbnail(clip: clip, thumbnails: resources.thumbnails)
+        case .file:
+            Image(nsImage: resources.icons.fileIcon(forName: ClipDisplay.firstFileName(of: clip)))
+                .resizable()
+                .interpolation(.high)
+                .frame(width: Theme.Layout.rowGlyphSize, height: Theme.Layout.rowGlyphSize)
+                .accessibilityHidden(true)
+        case .text, .richText, .link:
+            EmptyView()
+        }
     }
 }
 

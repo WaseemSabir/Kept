@@ -7,13 +7,19 @@ struct ClipFact: Identifiable, Equatable, Sendable {
     let value: String
     /// Draws this app's icon before the value (for "From").
     var appBundleID: String?
+    /// Cuts a long value at its end ("Content") rather than its middle.
+    var truncatesTail = false
 
     var id: String { label }
 }
 
 /// The facts the preview lists under a clip: where it came from, when, how
-/// often, and how big. Values are words and numbers, never dot-joined strings.
+/// often, and how big; for a clip the user named, last, the start of what it
+/// holds. Values are words and numbers, never dot-joined strings.
 enum ClipFacts {
+    /// The longest "Content" value, in characters.
+    static let maxContentCharacters = 200
+
     static func facts(
         for clip: Clip,
         preview: ClipPreview,
@@ -33,7 +39,28 @@ enum ClipFacts {
             facts.append(ClipFact(label: "Times copied", value: clip.copyCount.formatted()))
         }
         facts += kindFacts(for: clip, preview: preview)
+        if let name = clip.customTitle {
+            let content = contentLine(of: clip, preview: preview)
+            if !content.isEmpty, content != name {
+                facts.append(ClipFact(label: "Content", value: content, truncatesTail: true))
+            }
+        }
         return facts
+    }
+
+    /// What a named clip holds, in one line: its text's first line with
+    /// something in it, or the generated title (a link, a color, an
+    /// image's size, file names).
+    static func contentLine(of clip: Clip, preview: ClipPreview) -> String {
+        var line = clip.title
+        if case .text(let text, _) = preview.content,
+           let first = text.split(separator: "\n", omittingEmptySubsequences: true)
+               .lazy.map({ $0.trimmingCharacters(in: .whitespaces) })
+               .first(where: { !$0.isEmpty }) {
+            line = first
+        }
+        guard line.count > maxContentCharacters else { return line }
+        return String(line.prefix(maxContentCharacters)) + "…"
     }
 
     private static func kindFacts(for clip: Clip, preview: ClipPreview) -> [ClipFact] {

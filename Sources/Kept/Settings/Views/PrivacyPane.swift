@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// What Kept captures, the apps it never captures from, and clearing the
-/// history. When macOS keeps Kept from reading the clipboard (macOS 15.4+),
-/// that comes first, with where to change it.
+/// What Kept captures, the apps it never captures from, how long unpinned
+/// clips stay, and clearing the history. When macOS keeps Kept from reading
+/// the clipboard (macOS 15.4+), that comes first, with where to change it.
 struct PrivacyPane: View {
     let model: SettingsModel
 
@@ -43,10 +43,22 @@ struct PrivacyPane: View {
             }
 
             SettingsRow(label: "History:", labelWidth: Self.labelWidth) {
+                HStack(alignment: .firstTextBaseline, spacing: Theme.SettingsLayout.controlSpacing) {
+                    Text("Forget unpinned clips:")
+                    Picker("Forget unpinned clips", selection: $preferences.forgetAfter) {
+                        ForEach(model.forgetAfterChoices, id: \.self) { period in
+                            Text(SettingsModel.title(for: period)).tag(period)
+                        }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                }
+                SettingsNote(text: model.forgetAfterNote)
                 Button("Clear history…") {
                     Task { await model.clearHistory() }
                 }
                 .disabled(model.clearHistoryPrompt == nil)
+                .padding(.top, Theme.SettingsLayout.controlSpacing)
                 SettingsNote(text: model.historyNotice ?? model.historySummary)
             }
         }

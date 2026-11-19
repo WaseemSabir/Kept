@@ -154,6 +154,12 @@ enum Theme {
         static let rowGlyphSize: CGFloat = 16
         static let colorSwatchSize: CGFloat = 14
         static let factLabelWidth: CGFloat = 84
+        /// How far a rounded text field's text sits inside its bezel.
+        static let renameFieldInset: CGFloat = 5
+        /// The text editor's corners and the space between its edge and
+        /// its text (so the text keeps the preview's left edge).
+        static let editorCornerRadius: CGFloat = 6
+        static let editorInset: CGFloat = 8
 
         /// The copy-only hint: the panel's material, a quiet rounded card.
         static let hintMaterial = panelMaterial

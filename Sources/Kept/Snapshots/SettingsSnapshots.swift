@@ -30,6 +30,9 @@ enum SettingsSnapshots {
             preferences.excludeApp("com.apple.TextEdit")
         },
         Scene(name: "settings-privacy-clipboard-access", pane: .privacy, pasteboardAccess: .asks),
+        Scene(name: "settings-privacy-forget-week", pane: .privacy) { preferences in
+            preferences.forgetAfter = .week
+        },
         Scene(name: "settings-about", pane: .about),
     ]
 

@@ -14,6 +14,8 @@ enum SampleHistory {
         let minutesAgo: Double
         var copies = 1
         var pinned = false
+        /// A name the user gave it (⌘R).
+        var name: String?
     }
 
     /// Records the samples into `store`, ages measured from `now`.
@@ -33,6 +35,7 @@ enum SampleHistory {
                 clip = try store.record(draft, at: now.addingTimeInterval(-minutes * 60))
             }
             if sample.pinned, let clip { pins.append(clip.id) }
+            if let name = sample.name, let clip { try store.rename(clip.id, to: name) }
         }
         for id in pins {
             try store.pin(id)
@@ -49,7 +52,7 @@ enum SampleHistory {
         [
             Sample(
                 items: [text("Thanks for reaching out! I’ve passed this along to the team, and we’ll get back to you within one business day.")],
-                source: "com.apple.mail", minutesAgo: 60 * 24 * 3, copies: 14, pinned: true
+                source: "com.apple.mail", minutesAgo: 60 * 24 * 3, copies: 14, pinned: true, name: "Support reply"
             ),
             Sample(
                 items: [text("1 Ferry Building, San Francisco, CA 94111")],

@@ -239,6 +239,27 @@ final class SettingsModel {
         return "\(clips) in your history, \(store.pinned.count.formatted()) of them pinned."
     }
 
+    /// The choices of "Forget unpinned clips", in order.
+    var forgetAfterChoices: [RetentionPeriod] { RetentionPeriod.allCases }
+
+    /// A choice's name in the menu: "Never", "After a week"…
+    static func title(for period: RetentionPeriod) -> String {
+        switch period {
+        case .never: "Never"
+        case .day: "After a day"
+        case .week: "After a week"
+        case .month: "After a month"
+        }
+    }
+
+    /// Under "Forget unpinned clips": what the choice means.
+    var forgetAfterNote: String {
+        switch preferences.forgetAfter {
+        case .never: "Unpinned clips stay until your history is full."
+        case .day, .week, .month: "Counted from a clip's last copy or paste. Pins always stay."
+        }
+    }
+
     /// The confirmation "Clear history…" would show; `nil` when there's
     /// nothing to clear.
     var clearHistoryPrompt: ClearHistoryPrompt? {

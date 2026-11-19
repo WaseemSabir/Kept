@@ -15,19 +15,23 @@ final class PanelViewModel {
         case keep
     }
 
-    /// The search text. Changing it selects the best match.
+    /// The search text. Changing it selects the best match (and saves a
+    /// name or text being edited).
     var query = "" {
         didSet {
             guard query != oldValue else { return }
             isConfirmingClear = false
+            finishEditing()
             refresh(selecting: .first)
         }
     }
 
-    /// The type filter. Changing it selects the first result.
+    /// The type filter. Changing it selects the first result (and saves a
+    /// name or text being edited).
     var filter: ClipFilter = .all {
         didSet {
             guard filter != oldValue else { return }
+            finishEditing()
             refresh(selecting: .first)
         }
     }
@@ -49,6 +53,19 @@ final class PanelViewModel {
     private(set) var presentationCount = 0
     /// The time ages are measured from; updated when the panel opens.
     private(set) var now = Date()
+    /// A clip's name or text being edited, or `nil`.
+    private(set) var editing: PanelEditing?
+    /// The name being typed into the row (⌘R).
+    var nameDraft = ""
+    /// The text being typed into the preview (⌘E).
+    var textDraft = ""
+    /// Goes up when a name or text stops being edited, so the search
+    /// field takes the keyboard back.
+    private(set) var searchFocusToken = 0
+
+    /// The most characters the preview's editor takes; longer clips can't
+    /// be edited in Kept.
+    static let maxEditableCharacters = 100_000
 
     /// `nil` when the history couldn't be opened.
     let store: HistoryStore?
@@ -74,6 +91,8 @@ final class PanelViewModel {
     /// A paste waiting for a big clip to be read off the main actor
     /// (`ClipPasting.startLoading(_:for:)`).
     @ObservationIgnored private var pendingPaste: Task<Void, Never>?
+    /// A big clip's text being read off the main actor before ⌘E edits it.
+    @ObservationIgnored private var pendingTextEdit: Task<Void, Never>?
 
     private let paster: (any ClipPasting)?
     private let pasteOptions: @MainActor () -> PasteOptions
@@ -149,6 +168,30 @@ final class PanelViewModel {
         pasteOptions().pasteDirectly ? "Copy" : nil
     }
     var pinActionTitle: String { selectedClip?.isPinned == true ? "Unpin" : "Pin" }
+
+    /// How `PanelKeyRouter` reads keys: in the search field, or in the name
+    /// or text being edited.
+    var keyMode: PanelKeyMode { editing?.keyMode ?? .browsing }
+
+    /// The clip whose name is being edited in its row.
+    var renamingID: UUID? {
+        if case .name(let id) = editing { id } else { nil }
+    }
+
+    /// The text being edited in the preview, if any.
+    var textEdit: PanelEditing.TextEdit? {
+        if case .text(let edit) = editing { edit } else { nil }
+    }
+
+    /// The row's context menu for `clip` (see `ClipMenu`).
+    func menuSections(for clip: Clip) -> [[ClipMenu.Item]] {
+        ClipMenu.sections(
+            for: clip,
+            primaryTitle: primaryActionTitle,
+            alternateTitle: alternateActionTitle,
+            copyOnlyTitle: copyOnlyActionTitle
+        )
+    }
 
     /// Whether pins can be dragged or moved with ⌥⌘↑ / ⌥⌘↓ here: the list
     /// shows them in their own order, so a pin's row is its place.
@@ -264,18 +307,29 @@ final class PanelViewModel {
 
     /// Carries out the command for a key press. Returns `false` for keys the
     /// panel leaves to the search field (text editing, and ⌘⌫ while there's
-    /// a query).
+    /// a query). While a name or text is being edited, only saving and
+    /// cancelling do anything.
     @discardableResult
     func perform(_ command: PanelCommand) -> Bool {
         switch command {
         case .edit:
             return false
-        case .delete where !query.isEmpty:
+        case .ignore:
+            return true
+        case .delete where !query.isEmpty && editing == nil:
             // ⌘⌫ in a text field deletes to the start of the line; only an
             // empty search makes it mean "delete this clip".
             return false
         default:
             break
+        }
+        if editing != nil {
+            switch command {
+            case .commitEditing: commitEditing()
+            case .cancelEditing: cancelEditing()
+            default: break
+            }
+            return true
         }
         if isConfirmingClear {
             confirmationKey(command)
@@ -286,8 +340,10 @@ final class PanelViewModel {
     }
 
     /// Carries out `command` on `clip`, selecting it first: the row's
-    /// context menu. Its Delete works with or without a query.
+    /// context menu. Its Delete works with or without a query. A name or
+    /// text being edited is saved first.
     func perform(_ command: PanelCommand, on clip: Clip) {
+        finishEditing()
         select(clip)
         run(command)
     }
@@ -339,7 +395,11 @@ final class PanelViewModel {
             cycleFilter(by: -1)
         case .openSettings:
             onOpenSettings()
-        case .edit:
+        case .beginRename:
+            beginRename()
+        case .beginTextEdit:
+            beginTextEdit()
+        case .commitEditing, .cancelEditing, .ignore, .edit:
             break
         }
         if command.movesThroughList { announceSelection() }
@@ -359,10 +419,13 @@ final class PanelViewModel {
         setSelection(index: results.isEmpty ? nil : min(max(index, 0), results.count - 1))
     }
 
-    /// Selects `clip` (a click).
+    /// Selects `clip` (a click). Clicking away from a name or text being
+    /// edited saves it.
     func select(_ clip: Clip) {
         notice = nil
         isConfirmingClear = false
+        // After clearing the notice, so one about the save stays.
+        if let editing, editing.clipID != clip.id { finishEditing() }
         if selectedID == clip.id { return }
         if let index = results.firstIndex(where: { $0.id == clip.id }) {
             setSelection(index: index)
@@ -372,6 +435,8 @@ final class PanelViewModel {
     /// The panel went away. The query isn't kept while it's hidden, and the
     /// history isn't searched again until it opens.
     func panelDidHide() {
+        // Moving away saves, as clicking elsewhere does.
+        finishEditing()
         isHidden = true
         pendingPaste?.cancel()
         pendingPaste = nil
@@ -381,10 +446,13 @@ final class PanelViewModel {
         filter = .all
     }
 
-    /// Selects `clip` and pastes it, like ⏎ (a double-click).
+    /// Selects `clip` and pastes it, like ⏎ (a double-click). A name or
+    /// text being edited is saved first, so an edited clip pastes as edited.
     func activate(_ clip: Clip) {
+        guard renamingID != clip.id else { return }
+        finishEditing()
         select(clip)
-        paste(clip, .paste(alternate: false))
+        paste(store?.clip(withID: clip.id) ?? clip, .paste(alternate: false))
     }
 
     func confirmClearUnpinned() {
@@ -414,6 +482,11 @@ final class PanelViewModel {
             results = []
         }
 
+        // The clip being edited went away (deleted or cleared elsewhere):
+        // there's nothing to save it to.
+        if let editing, !results.contains(where: { $0.id == editing.clipID }) {
+            endEditing()
+        }
         guard !results.isEmpty else {
             setSelection(index: nil)
             return
@@ -537,6 +610,205 @@ final class PanelViewModel {
             report("Couldn't delete that clip.", error)
         }
         refresh(selecting: .keep)
+    }
+
+    // MARK: Renaming and editing
+
+    /// ⌘R: the selected row's title becomes a field holding its name (or
+    /// title), for `commitRename()`.
+    func beginRename() {
+        guard let clip = selectedClip else { return }
+        finishEditing()
+        notice = nil
+        nameDraft = clip.displayTitle
+        editing = .name(clipID: clip.id)
+    }
+
+    /// ⌘E: the preview becomes an editor for the selected clip's text.
+    /// Images and files can't be edited (the footer says so and suggests
+    /// ⌘R); a big clip is read off the main actor first.
+    func beginTextEdit() {
+        guard let clip = selectedClip, let store else { return }
+        finishEditing()
+        notice = nil
+        guard clip.kind.isTextLike else {
+            let message = Self.notEditableMessage(for: clip)
+            notice = message
+            announce(message)
+            return
+        }
+        if let count = clip.metadata.characterCount, count > Self.maxEditableCharacters {
+            refuseTooLongEdit()
+            return
+        }
+        let stored: StoredRepresentations
+        do {
+            stored = try store.storedRepresentations(for: clip.id, types: Set(PasteboardItem.textTypes))
+        } catch {
+            report("Couldn't open that clip for editing.", error)
+            return
+        }
+        if stored.isInMemory, stored.byteSize <= PreviewLoader.immediateByteLimit {
+            startTextEdit(of: clip, text: Self.editableText(of: stored))
+            return
+        }
+        pendingTextEdit?.cancel()
+        let id = clip.id
+        pendingTextEdit = Task { [weak self] in
+            let text = await Task.detached(priority: .userInitiated) {
+                PanelViewModel.editableText(of: stored)
+            }.value
+            guard let self, !Task.isCancelled else { return }
+            self.pendingTextEdit = nil
+            guard let clip = self.selectedClip, clip.id == id else { return }
+            self.startTextEdit(of: clip, text: text)
+        }
+    }
+
+    /// Saves the name or text being edited (⏎ or ⌘S); the same as
+    /// `finishEditing()` except that text that can't be saved stays in the
+    /// editor with a notice.
+    func commitEditing() {
+        switch editing {
+        case .name: commitRename()
+        case .text: commitTextEdit(keepingOnFailure: true)
+        case nil: break
+        }
+    }
+
+    /// Esc: puts the name or text back as it was.
+    func cancelEditing() {
+        guard editing != nil else { return }
+        notice = nil
+        endEditing()
+    }
+
+    /// Saves the name or text being edited because the user moved away
+    /// from it: clicked elsewhere, searched, or closed the panel.
+    func finishEditing() {
+        pendingTextEdit?.cancel()
+        pendingTextEdit = nil
+        switch editing {
+        case .name: commitRename()
+        case .text: commitTextEdit(keepingOnFailure: false)
+        case nil: break
+        }
+    }
+
+    /// The name field lost the keyboard (a click elsewhere): saves it if
+    /// it's still `clipID`'s.
+    func renameFieldDidResign(for clipID: UUID) {
+        guard renamingID == clipID else { return }
+        commitRename()
+    }
+
+    /// The text editor lost the keyboard (a click in the search field):
+    /// saves it if it's still `clipID`'s.
+    func textEditorDidResign(for clipID: UUID) {
+        guard textEdit?.clipID == clipID else { return }
+        commitTextEdit(keepingOnFailure: false)
+    }
+
+    private func commitRename() {
+        guard case .name(let id) = editing, let store else { return }
+        let name = nameDraft
+        endEditing()
+        do {
+            let renamed = try store.rename(id, to: name)
+            announce(renamed.customTitle.map { "Renamed to \($0)." } ?? "Name removed. The clip shows its text.")
+        } catch {
+            report("Couldn't rename that clip.", error)
+        }
+        refresh(selecting: .keep)
+    }
+
+    private func commitTextEdit(keepingOnFailure: Bool) {
+        guard let edit = textEdit, let store else { return }
+        let text = textDraft
+        guard text != edit.original else {
+            endEditing()
+            return
+        }
+        do throws(HistoryStoreError) {
+            try store.editText(edit.clipID, to: text, at: Date())
+            endEditing()
+            notice = nil
+            announce("Edit saved.")
+        } catch .emptyText {
+            if keepingOnFailure {
+                notice = "Type some text to save, or press Esc to cancel."
+                announce(notice ?? "")
+                return
+            }
+            endEditing()
+            notice = "An empty edit wasn't saved."
+        } catch {
+            report("Couldn't save your edit.", error)
+            if keepingOnFailure { return }
+            endEditing()
+        }
+        refresh(selecting: .keep)
+    }
+
+    /// Stops editing without saving, and gives the keyboard back to the
+    /// search field.
+    private func endEditing() {
+        guard editing != nil else { return }
+        editing = nil
+        searchFocusToken &+= 1
+    }
+
+    private func startTextEdit(of clip: Clip, text: String?) {
+        guard let text else {
+            // Never edit a stand-in (the search text is cut and collapsed).
+            notice = "Couldn't open that clip for editing."
+            Log.panel.error("A clip to edit has no readable text")
+            return
+        }
+        let excerpt = TextSanitizer.multiline(text, maxUTF16Count: Self.maxEditableCharacters)
+        guard !excerpt.isTruncated else {
+            refuseTooLongEdit()
+            return
+        }
+        textDraft = excerpt.text
+        editing = .text(PanelEditing.TextEdit(
+            clipID: clip.id,
+            original: excerpt.text,
+            dropsFormatting: clip.kind == .richText,
+            isCode: Self.editsAsCode(clip)
+        ))
+    }
+
+    private func refuseTooLongEdit() {
+        let message = "Kept edits clips of up to \(Self.maxEditableCharacters.formatted()) characters."
+        notice = message
+        announce(message)
+    }
+
+    /// Code, links and colors are edited in SF Mono, as the preview shows them.
+    static func editsAsCode(_ clip: Clip) -> Bool {
+        clip.metadata.looksLikeCode || clip.kind == .link || clip.kind == .color
+    }
+
+    /// Why ⌘E does nothing for an image or files, and what to do instead.
+    static func notEditableMessage(for clip: Clip) -> String {
+        switch clip.kind {
+        case .image: "Only text can be edited. Press ⌘R to rename this image."
+        case .file where (clip.metadata.fileCount ?? 1) > 1: "Only text can be edited. Press ⌘R to rename these files."
+        default: "Only text can be edited. Press ⌘R to rename this file."
+        }
+    }
+
+    /// The clip's text as the editor shows it: its plain text (string,
+    /// URL, RTF, then HTML), read wherever this runs; `nil` when it can't
+    /// be read.
+    private nonisolated static func editableText(of stored: StoredRepresentations) -> String? {
+        do {
+            return PasteboardItem.plainText(of: try stored.load())
+        } catch {
+            Log.panel.error("Couldn't read a clip to edit: \(String(describing: error), privacy: .public)")
+            return nil
+        }
     }
 
     private func requestClearUnpinned() {

@@ -10,7 +10,8 @@ import SwiftUI
 /// (which can hold 10,000 clips).
 ///
 /// Each row has a context menu with the clip's actions. Pins can be dragged
-/// into a new order while the list shows them in their own order.
+/// into a new order while the list shows them in their own order. The row
+/// being renamed takes no taps or drags, so clicks reach its name field.
 struct ClipList: View {
     let model: PanelViewModel
     let resources: PanelResources
@@ -40,8 +41,10 @@ struct ClipList: View {
         let now = model.now
         let canReorderPins = model.canReorderPins
         let matchTokens = model.matchTokens
+        let renamingID = model.renamingID
         return LazyVStack(spacing: 0) {
             ForEach(Array(model.results.enumerated()), id: \.element.id) { index, clip in
+                let takesTaps: GestureMask = clip.id == renamingID ? .subviews : .all
                 ClipRow(
                     clip: clip,
                     model: model,
@@ -52,10 +55,13 @@ struct ClipList: View {
                     resources: resources
                 )
                 .id(clip.id)
-                .gesture(TapGesture(count: 2).onEnded { model.activate(clip) })
-                .simultaneousGesture(TapGesture().onEnded { model.select(clip) })
+                .gesture(TapGesture(count: 2).onEnded { model.activate(clip) }, including: takesTaps)
+                .simultaneousGesture(TapGesture().onEnded { model.select(clip) }, including: takesTaps)
                 // `.subviews` keeps the taps above working when the drag is off.
-                .simultaneousGesture(pinDrag(for: clip), including: canReorderPins && clip.isPinned ? .all : .subviews)
+                .simultaneousGesture(
+                    pinDrag(for: clip),
+                    including: canReorderPins && clip.isPinned && clip.id != renamingID ? .all : .subviews
+                )
                 .contextMenu { ClipContextMenu(clip: clip, model: model) }
                 .accessibilityActions {
                     // VoiceOver's way to reorder pins, besides ⌥⌘↑ / ⌥⌘↓.
@@ -103,34 +109,35 @@ private struct SelectionScroller: View {
 }
 
 /// A row's context menu: the same actions as the keys, for the clicked
-/// clip, with their keys shown.
+/// clip, with their keys shown (`ClipMenu`).
 private struct ClipContextMenu: View {
     let clip: Clip
     let model: PanelViewModel
 
     var body: some View {
-        Button(model.primaryActionTitle) {
-            model.perform(.activate(alternate: false), on: clip)
-        }
-        .keyboardShortcut(.return, modifiers: [])
-        Button(model.alternateActionTitle) {
-            model.perform(.activate(alternate: true), on: clip)
-        }
-        .keyboardShortcut(.return, modifiers: .option)
-        if let copyOnlyTitle = model.copyOnlyActionTitle {
-            Button(copyOnlyTitle) {
-                model.perform(.copyOnly, on: clip)
+        let sections = model.menuSections(for: clip)
+        ForEach(Array(sections.enumerated()), id: \.offset) { index, items in
+            if index > 0 { Divider() }
+            ForEach(items, id: \.title) { item in
+                Button(item.title) {
+                    model.perform(item.command, on: clip)
+                }
+                .keyboardShortcut(Self.shortcut(for: item.command))
             }
-            .keyboardShortcut(.return, modifiers: .command)
         }
-        Divider()
-        Button(clip.isPinned ? "Unpin" : "Pin") {
-            model.perform(.togglePin, on: clip)
+    }
+
+    /// The key each command has in the panel, shown beside it.
+    private static func shortcut(for command: PanelCommand) -> KeyboardShortcut? {
+        switch command {
+        case .activate(alternate: false): KeyboardShortcut(.return, modifiers: [])
+        case .activate(alternate: true): KeyboardShortcut(.return, modifiers: .option)
+        case .copyOnly: KeyboardShortcut(.return, modifiers: .command)
+        case .togglePin: KeyboardShortcut("p", modifiers: .command)
+        case .beginRename: KeyboardShortcut("r", modifiers: .command)
+        case .beginTextEdit: KeyboardShortcut("e", modifiers: .command)
+        case .delete: KeyboardShortcut(.delete, modifiers: .command)
+        default: nil
         }
-        .keyboardShortcut("p", modifiers: .command)
-        Button("Delete") {
-            model.perform(.delete, on: clip)
-        }
-        .keyboardShortcut(.delete, modifiers: .command)
     }
 }

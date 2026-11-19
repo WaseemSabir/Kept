@@ -18,6 +18,8 @@ final class AppEnvironment {
     private let hintController: PasteHintController
     private let statusItemController: StatusItemController
     private let hotkeyController: HotkeyController
+    /// Forgets old unpinned clips; `nil` when the history couldn't be opened.
+    private let retention: RetentionScheduler?
 
     init() {
         let preferences = Preferences()
@@ -36,6 +38,7 @@ final class AppEnvironment {
         self.hintController = hintController
         let pasteService: PasteService?
         if let store = opened.store {
+            retention = RetentionScheduler(store: store, preferences: preferences)
             captureService = CaptureService(
                 store: store,
                 settings: { preferences.captureSettings },
@@ -53,6 +56,7 @@ final class AppEnvironment {
                 hints: hintController
             )
         } else {
+            retention = nil
             captureService = nil
             pasteService = nil
         }
@@ -150,6 +154,8 @@ final class AppEnvironment {
         }
         observeHistoryLimit()
         observePause()
+        // At launch, whenever "Forget unpinned clips" changes, and hourly.
+        retention?.start()
     }
 
     // MARK: Shortcuts

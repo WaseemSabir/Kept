@@ -80,6 +80,32 @@ enum SnapshotRenderer {
         Scene(name: "always-plain-text", options: PasteOptions(alwaysPastePlainText: true)),
         Scene(name: "copy-only-mode", options: PasteOptions(pasteDirectly: false)),
         Scene(name: "search-increased-contrast", increasedContrast: true) { $0.query = "pasteboard" },
+        Scene(name: "selected-named") { select($0) { $0.customTitle != nil } },
+        Scene(name: "rename") { model in
+            select(model) { $0.title.hasPrefix("1 Ferry Building") }
+            model.perform(.beginRename)
+            model.nameDraft = "Studio address"
+        },
+        Scene(name: "rename-image") { model in
+            select(model) { $0.kind == .image }
+            model.perform(.beginRename)
+        },
+        Scene(name: "edit-text") { model in
+            select(model) { $0.title.hasPrefix("Thanks for the quick turnaround") }
+            model.perform(.beginTextEdit)
+        },
+        Scene(name: "edit-code") { model in
+            select(model) { $0.metadata.looksLikeCode && $0.title.hasPrefix("func") }
+            model.perform(.beginTextEdit)
+        },
+        Scene(name: "edit-rich-text") { model in
+            select(model) { $0.kind == .richText }
+            model.perform(.beginTextEdit)
+        },
+        Scene(name: "edit-image-refused") { model in
+            select(model) { $0.kind == .image }
+            model.perform(.beginTextEdit)
+        },
     ]
 
     private static let hintScenes: [HintScene] = [

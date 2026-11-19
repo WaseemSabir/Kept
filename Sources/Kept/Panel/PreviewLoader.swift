@@ -24,13 +24,17 @@ final class PreviewLoader {
     /// How many previews are kept.
     nonisolated static let cacheCount = 16
 
+    /// A clip as previewed: an edit changes its content (and hash) but
+    /// not its ID or dates.
     private struct Key: Hashable, Sendable {
         let id: UUID
+        let contentHash: String
         let lastCopiedAt: Date
         let copyCount: Int
 
         init(_ clip: Clip) {
             id = clip.id
+            contentHash = clip.contentHash
             lastCopiedAt = clip.lastCopiedAt
             copyCount = clip.copyCount
         }

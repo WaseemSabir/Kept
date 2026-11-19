@@ -35,8 +35,20 @@ enum PanelCommand: Equatable, Sendable {
     case previousFilter
     /// ⌘,: open Settings.
     case openSettings
-    /// ⌘X, ⌘C, ⌘V, ⌘A, ⌘Z, ⇧⌘Z in the search field. Kept has no Edit menu
-    /// (it's an agent app), so the panel sends these actions itself.
+    /// ⌘R: name the selected clip, in its row.
+    case beginRename
+    /// ⌘E: edit the selected clip's text, in the preview.
+    case beginTextEdit
+    /// While renaming or editing: ⏎ (renaming), ⌘S or ⌘⏎ save.
+    case commitEditing
+    /// While renaming or editing: Esc puts the name or text back.
+    case cancelEditing
+    /// A key the panel takes and does nothing with: a list shortcut while
+    /// a name or text is being edited.
+    case ignore
+    /// ⌘X, ⌘C, ⌘V, ⌘A, ⌘Z, ⇧⌘Z in the search field (or the name or text
+    /// being edited). Kept has no Edit menu (it's an agent app), so the
+    /// panel sends these actions itself.
     case edit(TextEditAction)
 }
 

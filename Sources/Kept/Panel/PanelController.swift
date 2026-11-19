@@ -105,9 +105,9 @@ final class PanelController {
     // MARK: Keys
 
     /// Turns a key press into a command. Returns `false` to let the key reach
-    /// the search field (typing, ⌫, ←/→).
+    /// the search field (typing, ⌫, ←/→), or the name or text being edited.
     private func handle(_ press: KeyPress) -> Bool {
-        guard let command = PanelKeyRouter.command(for: press) else { return false }
+        guard let command = PanelKeyRouter.command(for: press, mode: model.keyMode) else { return false }
         if case .edit(let action) = command {
             return sendEditAction(action)
         }
@@ -115,8 +115,8 @@ final class PanelController {
     }
 
     /// Kept is an agent app without an Edit menu, so ⌘X/⌘C/⌘V/⌘A/⌘Z have no
-    /// menu item to trigger them; the panel sends their actions to the search
-    /// field itself.
+    /// menu item to trigger them; the panel sends their actions to the field
+    /// with the keyboard itself (the search, a name or the text editor).
     private func sendEditAction(_ action: TextEditAction) -> Bool {
         let selector: Selector = switch action {
         case .cut: #selector(NSText.cut(_:))

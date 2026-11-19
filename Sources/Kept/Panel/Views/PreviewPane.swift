@@ -1,7 +1,8 @@
 import KeptCore
 import SwiftUI
 
-/// The right pane: the selected clip in full, then its facts.
+/// The right pane: the selected clip in full, then its facts; or, while
+/// its text is edited, the editor.
 struct PreviewPane: View {
     let model: PanelViewModel
     let resources: PanelResources
@@ -9,7 +10,9 @@ struct PreviewPane: View {
     @State private var loaded: (clip: Clip, preview: ClipPreview)? = nil
 
     var body: some View {
-        if let clip = model.selectedClip {
+        if let clip = model.selectedClip, let edit = model.textEdit, edit.clipID == clip.id {
+            TextEditPane(model: model, edit: edit)
+        } else if let clip = model.selectedClip {
             let preview = shownPreview(for: clip)
             VStack(alignment: .leading, spacing: 14) {
                 PreviewContent(clip: clip, preview: preview, resources: resources)
@@ -225,7 +228,7 @@ private struct FactList: View {
                             .font(Theme.Typography.factValue)
                             .foregroundStyle(Theme.Colors.ink)
                             .lineLimit(1)
-                            .truncationMode(.middle)
+                            .truncationMode(fact.truncatesTail ? .tail : .middle)
                     }
                 }
                 .accessibilityElement(children: .combine)

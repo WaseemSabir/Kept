@@ -70,7 +70,12 @@ struct PanelKeyRouterTests {
     func letterShortcuts() {
         // On Dvorak the key that types "p" is QWERTY's R (key code 15).
         #expect(command(15, .command, "p") == .togglePin)
-        #expect(command(35, .command, "r") == nil)
+        #expect(command(35, .command, "j") == nil)
+        // On Dvorak, QWERTY's O key (31) types "r" and QWERTY's D key (2) "e".
+        #expect(command(31, .command, "r") == .beginRename)
+        #expect(command(2, .command, "e") == .beginTextEdit)
+        #expect(command(15, [], "r") == nil)
+        #expect(command(14, [.command, .shift], "e") == nil)
         #expect(command(35, .command, "P") == .togglePin)
         #expect(command(32, .control, "u") == .clearQuery)
     }
@@ -122,4 +127,92 @@ struct PanelKeyRouterTests {
         #expect(command(124) == nil)
         #expect(command(Key.upArrow, .shift) == nil)
     }
+
+    // MARK: Renaming and editing
+
+    private func command(
+        in mode: PanelKeyMode,
+        _ keyCode: UInt16,
+        _ modifiers: KeyPress.Modifiers = [],
+        _ characters: String = ""
+    ) -> PanelCommand? {
+        PanelKeyRouter.command(for: KeyPress(keyCode: keyCode, modifiers: modifiers, characters: characters), mode: mode)
+    }
+
+    @Test("While renaming, ⏎ and ⌘S save, Esc cancels the rename, and ⌥⏎ and Tab do nothing")
+    func renamingKeys() {
+        #expect(command(in: .renaming, Key.returnKey) == .commitEditing)
+        #expect(command(in: .renaming, Key.keypadEnter) == .commitEditing)
+        #expect(command(in: .renaming, Key.returnKey, .command) == .commitEditing)
+        #expect(command(in: .renaming, 1, .command, "s") == .commitEditing)
+        #expect(command(in: .renaming, Key.escape) == .cancelEditing)
+        #expect(command(in: .renaming, Key.returnKey, .option) == .ignore)
+        #expect(command(in: .renaming, Key.tab) == .ignore)
+        #expect(command(in: .renaming, Key.tab, .shift) == .ignore)
+    }
+
+    @Test("While editing text, ⌘S and ⌘⏎ save, Esc cancels, and ⏎ and Tab type")
+    func editingKeys() {
+        #expect(command(in: .editingText, 1, .command, "s") == .commitEditing)
+        #expect(command(in: .editingText, Key.returnKey, .command) == .commitEditing)
+        #expect(command(in: .editingText, Key.keypadEnter, .command) == .commitEditing)
+        #expect(command(in: .editingText, Key.escape) == .cancelEditing)
+        #expect(command(in: .editingText, Key.returnKey) == nil)
+        #expect(command(in: .editingText, Key.returnKey, .option) == nil)
+        #expect(command(in: .editingText, Key.returnKey, .shift) == nil)
+        #expect(command(in: .editingText, Key.tab) == nil)
+        #expect(command(in: .editingText, Key.tab, .shift) == .ignore)
+    }
+
+    @Test("While editing, list shortcuts are taken and do nothing")
+    func editingSuppressesShortcuts() {
+        for mode in [PanelKeyMode.renaming, .editingText] {
+            for (keyCode, digit) in PanelKeyRouter.digitKeyCodes {
+                #expect(command(in: mode, keyCode, .command, String(digit)) == .ignore)
+                #expect(command(in: mode, keyCode, [.command, .option], String(digit)) == .ignore)
+            }
+            #expect(command(in: mode, 35, .command, "p") == .ignore)
+            #expect(command(in: mode, 15, .command, "r") == .ignore)
+            #expect(command(in: mode, 14, .command, "e") == .ignore)
+            #expect(command(in: mode, 43, .command, ",") == .ignore)
+            #expect(command(in: mode, 40, .command, "k") == .ignore)
+            #expect(command(in: mode, 1, [.command, .shift], "S") == .ignore)
+        }
+    }
+
+    @Test("While editing, typing, text keys and editing shortcuts go to the field")
+    func editingPassesTextKeys() {
+        for mode in [PanelKeyMode.renaming, .editingText] {
+            #expect(command(in: mode, 0, [], "a") == nil)
+            #expect(command(in: mode, 0, .shift, "A") == nil)
+            #expect(command(in: mode, 0, .option, "å") == nil)
+            #expect(command(in: mode, 32, .control, "u") == nil)
+            #expect(command(in: mode, 35, .control, "p") == nil)
+            #expect(command(in: mode, Key.delete) == nil)
+            for keyCode in [Key.leftArrow, Key.rightArrow, Key.upArrow, Key.downArrow, Key.delete, Key.forwardDelete,
+                            Key.home, Key.end, Key.pageUp, Key.pageDown] {
+                #expect(command(in: mode, keyCode) == nil)
+                #expect(command(in: mode, keyCode, .command) == nil)
+                #expect(command(in: mode, keyCode, .option) == nil)
+                #expect(command(in: mode, keyCode, [.command, .option]) == nil)
+                #expect(command(in: mode, keyCode, [.command, .shift]) == nil)
+            }
+            #expect(command(in: mode, 7, .command, "x") == .edit(.cut))
+            #expect(command(in: mode, 8, .command, "c") == .edit(.copy))
+            #expect(command(in: mode, 9, .command, "v") == .edit(.paste))
+            #expect(command(in: mode, 0, .command, "a") == .edit(.selectAll))
+            #expect(command(in: mode, 6, .command, "z") == .edit(.undo))
+            #expect(command(in: mode, 6, [.command, .shift], "Z") == .edit(.redo))
+            #expect(command(in: mode, Key.escape, .shift) == nil)
+        }
+    }
+
+    @Test("Browsing reads keys as before")
+    func browsingIsTheDefault() {
+        let press = KeyPress(keyCode: Key.escape)
+        #expect(PanelKeyRouter.command(for: press) == .cancel)
+        #expect(PanelKeyRouter.command(for: press, mode: .browsing) == .cancel)
+        #expect(command(in: .browsing, 1, .command, "s") == nil)
+    }
 }
+

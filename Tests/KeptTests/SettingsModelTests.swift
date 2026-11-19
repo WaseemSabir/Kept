@@ -332,6 +332,20 @@ struct SettingsModelTests {
         #expect(model.pasteboardAccessNote == nil)
     }
 
+    // MARK: Forgetting old clips
+
+    @Test("Forget unpinned clips offers four choices and says what each means")
+    func forgetAfterChoices() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        let model = harness.model
+        #expect(model.forgetAfterChoices == [.never, .day, .week, .month])
+        #expect(model.forgetAfterNote == "Unpinned clips stay until your history is full.")
+        harness.preferences.forgetAfter = .week
+        #expect(model.forgetAfterNote == "Counted from a clip's last copy or paste. Pins always stay.")
+        #expect(SettingsModel.title(for: .week) == "After a week")
+    }
+
     // MARK: Clearing the history
 
     @Test("The clear prompt fits what's in the history")

@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// The panel's content: search bar, the clip list beside the preview, and a
-/// footer of key hints (or the inline confirmation for clearing history).
+/// footer of key hints (or the inline confirmation for clearing history, or
+/// Save and Cancel while a name or text is edited).
 struct PanelView: View {
     let model: PanelViewModel
     let resources: PanelResources
@@ -17,6 +18,8 @@ struct PanelView: View {
             Hairline()
             if model.isConfirmingClear {
                 ClearConfirmationBar(model: model)
+            } else if model.editing != nil {
+                EditingBar(model: model)
             } else {
                 PanelFooter(model: model)
             }

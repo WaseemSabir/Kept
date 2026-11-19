@@ -23,6 +23,8 @@ struct SearchBar: View {
         .frame(height: Theme.Layout.searchBarHeight)
         .onAppear { isFocused = true }
         .onChange(of: model.presentationCount) { isFocused = true }
+        // A name or text was saved or put back: the keyboard comes back here.
+        .onChange(of: model.searchFocusToken) { isFocused = true }
     }
 
     private var field: some View {
