@@ -161,7 +161,7 @@ on macOS 15.0–15.1 (sandboxed apps) and in secure input fields. Require ⌘ or
 | ⌘⌫ | Delete selected item (only while the search is empty) | Finder "Move to Trash". Plain ⌫ edits the search, and in a field ⌘⌫ deletes to the start of the line, so it means "delete item" only when the search is empty. |
 | ⌥⌘⌫ | Clear unpinned history (confirm with ⌥⌘⌫ again, never ⏎) | Maccy |
 | ⌘Y | Preview (P1) | Finder Quick Look, Raycast. Space can't be used because it types. |
-| ⌘E / ⌘R | Edit / rename (built in A5) | Paste |
+| ⌘E / ⌘R | Edit text / rename | Paste |
 | ⌃U | Clear search | Maccy, Emacs |
 | Esc | Clear search if non-empty, else close | Common |
 | ⌘, | Settings | macOS |

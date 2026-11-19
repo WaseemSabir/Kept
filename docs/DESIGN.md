@@ -103,7 +103,7 @@ the screen's visible frame). Two panes under one search bar, a quiet footer.
   (label / value). No meta strings joined with dots.
 - Empty states say what to do: "Copy something and it shows up here."
 
-**As built (A1).** Details the wireframe leaves open:
+**As built.** Details the wireframe leaves open:
 
 - Rows: number · kind glyph (swatch, thumbnail, file icon) · title ·
   age · source app icon. The icons form one column on the trailing edge
@@ -135,7 +135,7 @@ the screen's visible frame). Two panes under one search bar, a quiet footer.
   draw on the opaque window background because vibrancy doesn't render
   offscreen.
 
-**As built (A5): naming and editing clips.** Pins become snippets: a
+**As built: naming and editing clips.** Pins become snippets: a
 clip can carry a name, and text can be corrected in place.
 
 ```
@@ -183,7 +183,7 @@ clip can carry a name, and text can be corrected in place.
   `edit-text-*`, `edit-code-*`, `edit-rich-text-*`,
   `edit-image-refused-*`.
 
-**As built (A2): the copy-only hint.** When Kept copies but can't paste
+**As built: the copy-only hint.** When Kept copies but can't paste
 (no permission yet, secure input, Kept itself in front), a small HUD
 appears just above the bottom edge of where the panel was (or near the
 bottom of the active screen for the global shortcut):
@@ -343,7 +343,7 @@ Commit the SVG and the .icns together.
 Standard macOS settings window with a toolbar of panes. System controls
 only; copy in sentence case, active voice.
 
-**As built (A3).** A titled window with a preference-style toolbar:
+**As built.** A titled window with a preference-style toolbar:
 General · Shortcuts · Privacy · About (SF Symbols gearshape, command,
 hand.raised, info.circle). The title follows the pane. Every pane is
 560 pt wide; the window takes each pane's height and keeps its top edge
@@ -402,7 +402,7 @@ pane used.
 
 ## Welcome window
 
-**As built (A4).** Opens once, by itself, at the first launch
+**As built.** Opens once, by itself, at the first launch
 (`welcomeShown`), and again from About. A titled window with a transparent
 title bar, 380 pt wide, everything centered like a modern alert:
 

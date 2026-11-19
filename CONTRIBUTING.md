@@ -28,7 +28,8 @@ make release                # macOS: universal zip, disk image and checksums in 
 ## Snapshots
 
 The debug binary draws the panel, the copy-only hint and each Settings pane in
-sample states, light and dark, for design review (macOS only):
+sample states, light and dark, for design review (macOS only; release builds
+leave the renderer out):
 
 ```sh
 swift build && .build/debug/Kept --render-snapshots /tmp/kept-snapshots

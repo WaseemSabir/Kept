@@ -5,7 +5,63 @@ Living checklist. Each milestone is built, tested (Linux unit tests for
 next one starts. Scope comes from [RESEARCH.md](RESEARCH.md); look and feel
 from [DESIGN.md](DESIGN.md); structure from [ARCHITECTURE.md](ARCHITECTURE.md).
 
-Status: ☐ todo · ◐ in progress · ☑ done
+M0–M9 are the planned milestones. A1–A5 in the notes name the passes that
+built them: A1 capture and the panel, A2 pasting, A3 Settings and the menu
+bar, A4 onboarding and polish, A5 renaming, editing and forgetting.
+
+Marks: ☐ todo · ◐ in progress · ☑ done
+
+## Status
+
+**0.1 is feature-complete.** It includes:
+
+- **Capture:** text, rich text, links, colors, images and files, read off
+  the main actor; privacy markers, excluded apps (also a moment around using
+  them), Universal Clipboard, pause and "Ignore next copy" respected.
+- **History:** SQLite with a blob store for big payloads; dedup, pins
+  (reordered by key or drag), names (⌘R), text edits (⌘E), delete, clear,
+  a size limit and "Forget unpinned clips".
+- **Panel:** ⇧⌘V anywhere; search with marked matches, type filters, a
+  preview with facts, ⌘1–9, a context menu, and the keyboard for everything.
+- **Paste:** straight into the app you were in (layout-aware ⌘V), as plain
+  text, or copy only; a hint and a one-time explanation when Kept can't
+  paste; a global "Paste clipboard as plain text" shortcut.
+- **Around it:** Settings, the menu bar icon and menu, the welcome window,
+  launch at login, VoiceOver, Reduce Motion, Reduce Transparency and
+  Increase Contrast.
+- **Project:** CI on macOS (build, tests, snapshots, bundle, launch) and
+  Linux (core tests); universal release builds, signed and notarized when
+  credentials are set. A last structure pass split `HistoryStore` and
+  `PanelViewModel` into extensions by concern, kept the SQLite wrapper
+  internal to `KeptCore` and left the snapshot renderer out of release
+  builds.
+
+Not in 0.1: pruning by total blob size (only the clip count and the
+per-clip cap limit the history) and everything under [Later](#later-p2-only-if-it-stays-lean).
+
+### Check by hand on a Mac
+
+CI can't grant permissions, post key events, run VoiceOver or change System
+Settings, so check these on macOS 14, 15, 26 and 27 before a release. Sign
+local builds with one persistent identity: an ad-hoc rebuild loses the paste
+permission ([RELEASING.md](RELEASING.md#local-builds-use-one-persistent-self-signed-identity)).
+
+- ☐ Pasting: ⌘V lands in the app you were in; the system prompt on the first
+  paste; the copy-only hint, with and without "Allow Kept to paste…"; secure
+  input (a password field, Terminal's Secure Keyboard Entry) copies and says
+  "Press ⌘V".
+- ☐ VoiceOver: row labels, the announcements as the selection moves, the
+  hint, the rename field, and "Renamed to…" / "Edit saved."
+- ☐ Menu bar icon: ⌘-drag it out of the menu bar, then bring it back from
+  Settings and by opening Kept again.
+- ☐ Focus: closing Settings or the welcome window gives the keyboard back to
+  the last app, with and without another app to go back to.
+- ☐ Clipboard access (macOS 15.4+): "Ask" and "Deny" under Paste from Other
+  Apps show the note in the welcome window and in Settings › Privacy.
+- ☐ Renaming: ⌘R's field takes the keyboard with its text selected; ⏎
+  saves, Esc cancels, clicking elsewhere saves.
+- ☐ Editing: ⌘E's editor takes the keyboard; the search field gets it back
+  after saving or cancelling; clicking the search field while editing saves.
 
 ## M0 — Foundation
 - ☑ Swift package: `KeptCore` (Foundation-only, Linux-testable), `CSQLite`, `Kept` app (macOS-only targets)
@@ -51,7 +107,7 @@ Notes:
 - ☑ `PasteboardSnapshot` + `CapturePolicy` (core): nspasteboard.org markers, legacy password types, excluded apps, whitespace-only, size caps, skipped heavy types
 - ☑ Primary kind detection: text / rich text / link / image / file(s) / color
 - ☑ `PasteboardMonitor` (app): `changeCount` polling with tolerance, source app (`org.nspasteboard.source` → frontmost app)
-- ☑ Skip Kept's own writes; pause capture; ignore next copy — core: `app.kept.Kept.own` marker and pause in `CapturePolicy`; app: own change counts, pause, one-shot ignore (menu/shortcut UI comes with M6/M7)
+- ☑ Skip Kept's own writes; pause capture; ignore next copy — core: `app.kept.Kept.own` marker and pause in `CapturePolicy`; app: own change counts, pause, one-shot ignore (the menu item and shortcut came with M6/M7)
 - ☑ Default excluded apps (Passwords, Keychain Access, 1Password 7/8, Bitwarden, KeePassXC) in `PreferenceDefaults`
 
 Notes:
@@ -86,9 +142,10 @@ Notes:
 - The panel routes every key-down through `PanelKeyRouter` before the search field sees it
   (except while an input method composes); letters match `charactersIgnoringModifiers`.
   ⌘X/⌘C/⌘V/⌘A/⌘Z are sent to the field by hand, since an agent app has no Edit menu.
-- ⏎ / ⌥⏎ / ⌘⏎ / ⌘1–9 / ⌥⌘1–9 copy and close for now; the footer says "Copy" until M4.
-- `Kept --render-snapshots <dir>` renders 13 states × light/dark; CI uploads them as the
-  `panel-snapshots` artifact.
+- At this point ⏎ / ⌥⏎ / ⌘⏎ / ⌘1–9 / ⌥⌘1–9 only copied and closed; M4 added pasting.
+- `Kept --render-snapshots <dir>` rendered 13 panel states × light/dark at first (the hint,
+  Settings and the welcome window came later); CI uploads them as the `panel-snapshots`
+  artifact. It's in debug builds only.
 
 ## M4 — Paste
 - ☑ Write a clip back to the pasteboard (all representations / plain text only)

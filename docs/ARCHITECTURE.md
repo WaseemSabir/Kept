@@ -35,52 +35,67 @@ Package.swift                 swift-tools 6.2; app targets only under #if os(mac
 Sources/
   CSQLite/                    system library target (module.modulemap → sqlite3)
   KeptCore/
-    Models/                   Clip, ClipKind, ClipFilter, ClipMetadata, PixelSize, ClipRepresentation, PasteboardItem, ClipDraft
-    Capture/                  PasteboardType, PasteboardSnapshot, CaptureSettings, CapturePolicy (+ CaptureDecision),
-                              ClipBuilder, ImageInspecting / PNGImageInspector, link / color / code detectors,
-                              AppActivationLog
-    Storage/                  SQLite wrapper (Database, Statement, Value, Error), HistorySchema (migrations),
-                              BlobStore (+ BlobReservations), HistoryStore, HistoryLimits, HistoryStoreError,
-                              StoredRepresentations, ClipStager (+ StagedClip)
+    Models/                   Clip, ClipDraft, ClipFilter, ClipKind, ClipMetadata, ClipRepresentation,
+                              PasteboardItem, PixelSize
+    Capture/                  PasteboardType, PasteboardSnapshot, CaptureSettings, CapturePolicy
+                              (+ CaptureDecision, IgnoreReason), ClipBuilder, ImageInspecting /
+                              PNGImageInspector, LinkDetector, ColorParser, CodeDetector, AppActivationLog
+    Storage/                  HistoryStore (state, opening, loading, reading) + HistoryStore+Recording,
+                              +Editing, +Pins, +Removing, +Rows; HistoryLimits, HistoryStoreError,
+                              HistorySchema (migrations), BlobStore (+ BlobReservations), ClipStager
+                              (+ StagedClip), StoredRepresentations; the internal SQLite wrapper
+                              (SQLiteDatabase, SQLiteStatement, SQLiteValue; SQLiteError is public)
     Search/                   ClipSearch (matching, ranking, kind filter), SearchKey (folded text)
-    Preferences/              Preferences (UserDefaults-backed), PreferenceDefaults (every default), PanelPosition,
-                              PanelPlacement (where the panel goes for each position), RetentionPeriod
-    Support/                  SHA256, TextSanitizer, RTF/HTML text extractors, LRUCache, SharedLoads
+    Preferences/              Preferences (UserDefaults-backed), PreferenceDefaults (every default),
+                              PanelPosition, PanelPlacement (where the panel goes), RetentionPeriod
+    Support/                  SHA256, TextSanitizer, RTFTextExtractor, HTMLTextExtractor, LRUCache,
+                              SharedLoads
   Kept/                       macOS app (executable target)
     App/                      main.swift, AppDelegate, AppEnvironment (composition root)
-    Clipboard/                PasteboardMonitor, PasteboardReader, CaptureService, AppActivationTracker,
-                              PasteboardWriter, ImageIOInspector, ImageTranscoder; paste: PasteService (+ ClipPasting),
-                              PastePolicy, PastePlan, PasteRequest, PasteOptions, ClipboardPlainText,
-                              KeystrokePosting / PasteKeystrokePoster, KeyboardLayout, UnicodeKeyLayout,
-                              PasteKeyResolver (+ KeyTranslating)
+    Clipboard/                capture: PasteboardMonitor, PasteboardReader, CaptureService,
+                              AppActivationTracker, ImageIOInspector, ImageTranscoder (+ DecodedImage);
+                              paste: PasteService (+ ClipPasting), PastePolicy, PastePlan, PasteRequest,
+                              PasteOptions, PasteboardWriter, ClipboardPlainText, KeystrokePosting /
+                              PasteKeystrokePoster, KeyboardLayout, PasteKeyResolver, KeyTranslating /
+                              UnicodeKeyLayout; NSPasteboardType+Kept (AppKit ↔ core pasteboard types)
     Permissions/              PermissionChecking / PostEventPermission, KeyboardFocusChecking /
-                              SystemKeyboardFocus, PasteOnboarding, PasteboardAccess (+ PasteboardAccessChecking /
-                              SystemPasteboardAccess)
-    PasteHint/                PasteHintController (+ PasteHintPresenting), HintPanel, PasteHintView, PasteHintCopy
-    Hotkeys/                  KeyboardShortcuts.Name definitions + HotkeyController
-    Panel/                    FloatingPanel (NSPanel), PanelController, PanelViewModel, PanelKeyRouter
-                              (+ KeyPress, PanelCommand, PanelKeyMode), PanelEditing, ClipMenu, ClipDisplay,
-                              ClipFacts, ClipAccessibility, MatchHighlighter, PreviewLoader, Views/ (+ RenameField,
-                              TextEditPane, ClipTextEditor)
+                              SystemKeyboardFocus, PasteboardAccess, PasteboardAccessChecking /
+                              SystemPasteboardAccess, PasteOnboarding
+    PasteHint/                PasteHintController (+ PasteHintPresenting), HintPanel, PasteHintView,
+                              PasteHintCopy
+    Hotkeys/                  HotkeyController, KeyboardShortcuts+Names
+    Panel/                    PanelController, FloatingPanel (NSPanel), PanelViewModel + PanelViewModel+Display,
+                              +Actions, +Editing; PanelKeyRouter (+ KeyPress, KeyPress+Event, PanelCommand,
+                              PanelKeyMode), PanelEditing, PanelResources, PreviewLoader (+ ClipPreview),
+                              ClipMenu, ClipDisplay, ClipFacts, ClipAccessibility, MatchHighlighter, EmptyState
+      Views/                  PanelView, SearchBar, ClipList, ClipRow, ClipSummary, ClipGlyph, RenameField,
+                              PreviewPane, TextEditPane, ClipTextEditor, EmptyStateView, PanelFooter,
+                              ClearConfirmationBar, EditingBar
     MenuBar/                  StatusItemController, StatusMenu (+ StatusMenuState), MenuBarIcon,
                               MenuBarIconPreference
     Settings/                 SettingsWindowController, SettingsWindow, SettingsTabViewController,
                               SettingsModel, SettingsPane; LoginItemControlling / MainAppLoginItem
                               (+ LoginItemStatus, LaunchAtLoginState); SettingsDialogPresenting /
                               SettingsDialogs (+ ClearHistoryPrompt, ClearHistoryChoice); ExcludedApp,
-                              AboutInfo; Views/ (panes, SettingsForm, SettingsRow, SettingsNote)
+                              AboutInfo
+      Views/                  SettingsPaneView, GeneralPane, ShortcutsPane, PrivacyPane, AboutPane,
+                              ExcludedAppsList, SettingsForm, SettingsRow, SettingsNote
     Welcome/                  WelcomeWindowController, WelcomeView, WelcomeCopy, WelcomeState
-    DesignSystem/             Theme (tokens), AdaptiveColor, Marker (highlighter), KeyCap, Hairline
-    Snapshots/                SnapshotRenderer, SettingsSnapshots, SampleHistory (`Kept --render-snapshots <dir>`)
-    Support/                  IconCache, ThumbnailCache, AgeFormatter, Log,
-                              ActiveAppTracker (+ FocusReturn), RetentionScheduler
+    DesignSystem/             Theme (tokens), AdaptiveColor, Color+Hex, MarkerShape (the highlighter),
+                              KeyCap, KeyHint, Hairline
+    Snapshots/                debug builds only: SnapshotRenderer, SettingsSnapshots, SampleHistory
+                              (`Kept --render-snapshots <dir>`)
+    Support/                  IconCache, ThumbnailCache, AgeFormatter, Log, VoiceOver, RetentionScheduler,
+                              ActiveAppTracker (+ FocusReturn)
 Tests/
   KeptCoreTests/              Swift Testing (`import Testing`); runs on Linux + macOS
   KeptTests/                  macOS-only tests for app-layer logic that can't live in core
 Resources/                    Info.plist, Kept.entitlements, AppIcon assets (copied by the bundle script)
-scripts/build-app.sh          assembles + signs Kept.app from `swift build` output
-Makefile                      build / test / app / run / clean
-.github/workflows/ci.yml      macOS: build, test, bundle · Linux: core tests
+scripts/                      build-app.sh (assembles + signs Kept.app from `swift build` output),
+                              package.sh (release zip, disk image, notarization), make-icon.py
+Makefile                      build / test / app / run / release / clean
+.github/workflows/            ci.yml (macOS: build, test, snapshots, bundle, launch · Linux: core
+                              tests), release.yml (tagged releases)
 ```
 
 Resources are **not** SwiftPM `resources:`; the bundle script copies them into
@@ -176,7 +191,8 @@ Resources are **not** SwiftPM `resources:`; the bundle script copies them into
   blob files on a background queue; returns how many went),
   `rename(_:to:)` (sets or clears `customTitle`; blank or the generated
   title clears; the clip stays in place) and `editText(_:to:at:)` (see
-  below). `record` keeps a re-copied clip's name. Reading: `representations(for:)` (every type) and
+  below). `record` keeps a re-copied clip's name. Reading: `clip(withID:)`,
+  `clip(withContentHash:)`, `representations(for:)` (every type) and
   `representations(for:types:)` (only those, so a text clip's text never
   loads the picture next to it), or `storedRepresentations(for:types:)`,
   which only queries the database and returns a `Sendable`
@@ -186,8 +202,9 @@ Resources are **not** SwiftPM `resources:`; the bundle script copies them into
   blob files off the main actor: `stageInBackground(_:)` on its own
   serial `DispatchQueue`, so fsyncs never hold a cooperative-pool thread.
   A staging that fails partway throws `ClipStager.Failure`, whose
-  `written` goes to `discard(_:)` so no file waits for the next launch. Prunes unpinned clips past the limit
-  automatically (pins never); every error is a thrown `HistoryStoreError`.
+  `written` goes to `discard(_:)` so no file waits for the next launch.
+  Prunes unpinned clips past the limit automatically (pins never); every
+  error is a thrown `HistoryStoreError`.
   Opening throws only when the history is unusable: unreadable rows are
   skipped and left alone (`skippedRecordCount`), and failed renumbering,
   pruning or blob sweeps at open land in `openWarnings`.
@@ -375,8 +392,9 @@ created the tables, 2 added the nullable `clips.custom_title` (an
   and takes every other ⌘ shortcut as `.ignore`. Moving away (another row,
   the query, the filter, the context menu, a double-click, hiding the
   panel, the field losing the keyboard) saves; only Esc discards.
-  `searchFocusToken` gives the search field the keyboard back afterwards. Moving the selection asks
-  `announce` (VoiceOver, via `PanelController`) to speak the row's
+  `searchFocusToken` gives the search field the keyboard back afterwards.
+  Moving the selection asks `announce` (`VoiceOver.announce`, via
+  `PanelController`, when VoiceOver is on) to speak the row's
   `ClipAccessibility` label. The list never reads the selection itself:
   each row does, and a small `SelectionScroller` view scrolls, so an arrow
   key doesn't rebuild every row. `MatchHighlighter` finds the query's
@@ -387,7 +405,10 @@ created the tables, 2 added the nullable `clips.custom_title` (an
   them in their own order (`canReorderPins`: no search, filter All or
   Pinned), so a pin's row is its place. Footer labels follow
   `PasteOptions`. Views only render it; caches (app icons, thumbnails)
-  live in `PanelResources`.
+  live in `PanelResources`. Its stored state is all in
+  `PanelViewModel.swift` (so observation tracks it); what views read is in
+  `+Display`, pasting, pins, deleting, clearing and filters in `+Actions`,
+  and renaming and editing in `+Editing`.
 - **RetentionScheduler** — applies `Preferences.forgetAfter`: at launch,
   whenever it changes (observation) and hourly on a timer with 10 minutes'
   tolerance (none with "Never"), `HistoryStore.forgetUnpinned(olderThan:)`
@@ -410,15 +431,17 @@ created the tables, 2 added the nullable `clips.custom_title` (an
 - **PasteService** — see the paste flow below. Depends on protocols
   (`PermissionChecking`, `KeystrokePosting`, `KeyboardFocusChecking`,
   `PasteHintPresenting`), so tests fake the system.
-- **Snapshots** — `Kept --render-snapshots <dir>` fills a temporary store
+- **Snapshots** — debug builds only (`#if DEBUG`; `make app` builds
+  release). `Kept --render-snapshots <dir>` fills a temporary store
   with `SampleHistory`, renders the panel, the copy-only hint and each
   Settings pane offscreen at 2× in light and dark (opaque background:
   vibrancy doesn't draw offscreen), draws the whole Settings window with
   its toolbar (light only: the toolbar's selection glass doesn't draw
   offscreen in dark mode), the welcome window's content, and a search
-  under the Increase Contrast appearance, and exits. Settings render from a throwaway preferences
-  domain and stand-ins for the login item, permission and dialogs. CI
-  runs it and uploads the PNGs as the `panel-snapshots` artifact.
+  under the Increase Contrast appearance, and exits. Settings render from
+  a throwaway preferences domain and stand-ins for the login item,
+  permission and dialogs. CI runs the debug binary and uploads the PNGs as
+  the `panel-snapshots` artifact.
 - **Menu bar** — `StatusItemController` owns the `NSStatusItem`: a click
   toggles the panel below the icon; a right-, ⌃- or ⌥-click
   (`wantsMenu(_:modifiers:)`, pure) attaches
@@ -533,6 +556,18 @@ sits at the bottom of the active screen). Nothing textual → a beep.
 - Swift 6 language mode, strict concurrency. UI and stores are `@MainActor`.
 - No force unwraps outside tests; errors are typed and surfaced, not
   swallowed.
-- Each file has one primary type; folders mirror the layout above.
+- Each file has one primary type, named after it; small private helpers
+  (a row's subviews, a value only that type produces) may sit beside it.
+  Folders mirror the layout above.
+- A type too big for one file keeps its stored properties in `Type.swift`
+  and its behavior in `Type+Concern.swift` extensions (`HistoryStore`,
+  `PanelViewModel`); those extensions are `@MainActor` like the type, and
+  the state they write has an internal rather than a private setter.
+  Extensions of other modules' types are named the same way
+  (`Color+Hex.swift`, `KeyboardShortcuts+Names.swift`).
+- `KeptCore`'s `public` API is what the app needs; implementation
+  details (the SQLite wrapper, row writing, blob bookkeeping) stay
+  internal, and tests reach them with `@testable import KeptCore`.
 - Pure logic goes in `KeptCore` with tests. App-layer code stays thin.
+- Developer tools (the snapshot renderer) compile only in debug builds.
 - Minimum macOS 14. Sandboxed (`com.apple.security.app-sandbox`).
