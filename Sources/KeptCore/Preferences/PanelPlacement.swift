@@ -112,8 +112,8 @@ public enum PanelPlacement {
     }
 
     private static func distance(from point: CGPoint, to rect: CGRect) -> CGFloat {
-        let dx = max(rect.minX - point.x, 0, point.x - rect.maxX)
-        let dy = max(rect.minY - point.y, 0, point.y - rect.maxY)
+        let dx: CGFloat = max(rect.minX - point.x, CGFloat(0), point.x - rect.maxX)
+        let dy: CGFloat = max(rect.minY - point.y, CGFloat(0), point.y - rect.maxY)
         return (dx * dx + dy * dy).squareRoot()
     }
 }
