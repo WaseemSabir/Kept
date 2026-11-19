@@ -66,7 +66,7 @@ enum SettingsSnapshots {
         _ scene: Scene,
         store: HistoryStore,
         icons: IconCache,
-        _ body: (SettingsModel, UserDefaults) async throws -> Data
+        _ body: @MainActor (SettingsModel, UserDefaults) async throws -> Data
     ) async throws -> Data {
         let suiteName = "app.kept.Kept.snapshots.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
