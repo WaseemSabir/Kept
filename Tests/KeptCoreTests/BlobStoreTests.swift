@@ -59,6 +59,27 @@ struct BlobStoreTests {
         #expect(!FileManager.default.fileExists(atPath: inProgress.path))
     }
 
+    @Test("A file renamed or deleted during a sweep isn't a failure")
+    func sweepRacesWithWrites() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let store = try BlobStore(directory: directory.appendingPathComponent("blobs"))
+        let orphan = try store.write(Data("orphan".utf8))
+        // Listed, then renamed into place or deleted by a capture before the
+        // sweep got to them.
+        let gone = [".tmp-renamed", String(repeating: "b", count: 64)]
+
+        let removed = try store.removeAll(
+            named: gone + [orphan],
+            except: [],
+            keepingTemporaryFilesNewerThan: BlobStore.temporaryFileGracePeriod,
+            now: Date().addingTimeInterval(BlobStore.temporaryFileGracePeriod + 60)
+        )
+        #expect(removed == 1)
+        #expect(!store.contains(orphan))
+        try store.remove(orphan)  // already gone
+    }
+
     @Test("Rewrites a damaged file instead of trusting its name")
     func verifiesBeforeReuse() throws {
         let directory = try makeTemporaryDirectory()

@@ -73,9 +73,8 @@ struct BlobStore: Sendable {
         guard Self.isValidHash(hash) else { return }
         let location = url(for: hash)
         try reservations.unlessReserved(hash) { () throws(HistoryStoreError) in
-            guard FileManager.default.fileExists(atPath: location.path) else { return }
             do {
-                try FileManager.default.removeItem(at: location)
+                try Self.removeFile(at: location)
             } catch {
                 throw .fileSystem(path: location.path, reason: error.localizedDescription)
             }
@@ -97,20 +96,36 @@ struct BlobStore: Sendable {
         keepingTemporaryFilesNewerThan gracePeriod: TimeInterval = BlobStore.temporaryFileGracePeriod,
         now: Date = Date()
     ) throws(HistoryStoreError) -> Int {
+        try removeAll(named: fileNames(), except: referenced, keepingTemporaryFilesNewerThan: gracePeriod, now: now)
+    }
+
+    /// `removeAll(except:keepingTemporaryFilesNewerThan:now:)` over `names`,
+    /// the folder's listing. A write running meanwhile may rename or delete
+    /// a listed file: a temporary file whose date can't be read is left
+    /// alone, and a file that's already gone isn't a failure.
+    func removeAll(
+        named names: [String],
+        except referenced: Set<String>,
+        keepingTemporaryFilesNewerThan gracePeriod: TimeInterval,
+        now: Date
+    ) throws(HistoryStoreError) -> Int {
         var removed = 0
         var firstFailure: HistoryStoreError?
-        for name in try fileNames() {
+        for name in names {
             let location = directory.appendingPathComponent(name)
             if name.hasPrefix(Self.temporaryPrefix) {
-                let modified = (try? FileManager.default.attributesOfItem(atPath: location.path))?[.modificationDate] as? Date
-                if let modified, now.timeIntervalSince(modified) < gracePeriod { continue }
+                let attributes = try? FileManager.default.attributesOfItem(atPath: location.path)
+                guard let modified = attributes?[.modificationDate] as? Date,
+                      now.timeIntervalSince(modified) >= gracePeriod
+                else { continue }
             } else if !Self.isValidHash(name) || referenced.contains(name) {
                 continue
             }
             do {
                 // Temporary names are never reserved, so they go unconditionally.
-                let didRemove = try reservations.unlessReserved(name) {
-                    try FileManager.default.removeItem(at: location)
+                var didRemove = false
+                try reservations.unlessReserved(name) {
+                    didRemove = try Self.removeFile(at: location)
                 }
                 if didRemove { removed += 1 }
             } catch {
@@ -176,6 +191,21 @@ struct BlobStore: Sendable {
             try? handle.close()
             unlink(path)
             throw .fileSystem(path: path, reason: error.localizedDescription)
+        }
+    }
+
+    /// Deletes the file at `url`. Returns `false` when it was already gone
+    /// (renamed or deleted by a write or deletion running meanwhile), which
+    /// isn't a failure.
+    @discardableResult
+    private static func removeFile(at url: URL) throws -> Bool {
+        do {
+            try FileManager.default.removeItem(at: url)
+            return true
+        } catch {
+            var status = stat()
+            if lstat(url.path, &status) != 0, errno == ENOENT { return false }
+            throw error
         }
     }
 
