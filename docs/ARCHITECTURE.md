@@ -45,14 +45,17 @@ Sources/
     Support/                  SHA256, TextSanitizer, RTF/HTML text extractors, KeptVersion
   Kept/                       macOS app (executable target)
     App/                      main.swift, AppDelegate, AppEnvironment (composition root)
-    Clipboard/                PasteboardMonitor, PasteboardReader, PasteboardWriter, PasteService, KeyboardLayout
+    Clipboard/                PasteboardMonitor, PasteboardReader, CaptureService, PasteboardWriter,
+                              PasteService (+ ClipCopying), ImageIOInspector, ImageTranscoder, KeyboardLayout
     Permissions/              PostEventPermission, PasteboardAccess
     Hotkeys/                  KeyboardShortcuts.Name definitions + handlers
-    Panel/                    FloatingPanel (NSPanel), PanelController, PanelViewModel, Views/
-    MenuBar/                  StatusItemController
+    Panel/                    FloatingPanel (NSPanel), PanelController, PanelViewModel, PanelKeyRouter
+                              (+ KeyPress, PanelCommand), ClipDisplay, ClipFacts, PreviewLoader, Views/
+    MenuBar/                  StatusItemController, MenuBarIcon
     Settings/                 SettingsWindowController, Views/ (panes)
-    DesignSystem/             Theme (tokens), Marker (highlighter), KeyCap, shared components
-    Support/                  AppIconCache, ThumbnailCache
+    DesignSystem/             Theme (tokens), AdaptiveColor, Marker (highlighter), KeyCap, Hairline
+    Snapshots/                SnapshotRenderer, SampleHistory (`Kept --render-snapshots <dir>`)
+    Support/                  IconCache, ThumbnailCache, AgeFormatter, RichTextDecoder, Log
 Tests/
   KeptCoreTests/              Swift Testing (`import Testing`); runs on Linux + macOS
   KeptTests/                  macOS-only tests for app-layer logic that can't live in core
@@ -140,16 +143,42 @@ migrations (`HistorySchema`).
   singletons beyond what AppKit forces.
 - **PasteboardMonitor** — `Timer` on the main run loop every 0.5 s with
   0.15 s tolerance; compares `changeCount`; skips the change counts Kept
-  wrote itself; asks `CapturePolicy` on types first; then reads data.
+  wrote itself, everything while paused, and one change after "ignore next
+  copy". It never reads contents; it tells `CaptureService`.
+- **PasteboardReader** — notes `changeCount`, asks `CapturePolicy` on the
+  types and the frontmost app, reads `org.nspasteboard.source` and asks
+  again, then reads only `PasteboardType.captured` per item (Finder file
+  reference URLs become path URLs). If `changeCount` moved during the read,
+  the read is dropped and the next poll takes the new copy.
+- **CaptureService** — runs the reader, then `ClipBuilder` in a detached
+  task (TIFF-only images re-encoded to PNG first; `ImageIOInspector` for
+  sizes). Builds run side by side, so a slow one never holds up later
+  copies; each is recorded on the main actor with the time its copy was
+  seen, unless the same content was recorded more recently.
+- **PasteboardWriter** — writes a clip's items back as `NSPasteboardItem`s
+  (all representations, or plain text only) with `.keptOwn` and `.source`.
 - **PanelController** — owns `FloatingPanel` (non-activating `NSPanel`,
   `.statusBar` level, `canBecomeKey = true`), shows it with
-  `orderFrontRegardless(); makeKey()` so the target app stays frontmost,
-  hides on `resignKey`.
+  `orderFrontRegardless(); makeKey()` so the target app stays frontmost
+  (≤120 ms fade, none under Reduce Motion), hides on `resignKey`. The panel
+  sees every key-down first (unless an input method is composing):
+  `PanelKeyRouter` turns it into a `PanelCommand` (letters by
+  `charactersIgnoringModifiers`, so shortcuts follow the layout) or lets it
+  through to the search field. ⌘X/⌘C/⌘V/⌘A/⌘Z are sent to the field
+  directly, since an agent app has no Edit menu.
 - **PanelViewModel** — `@Observable`; holds query, filter, selection;
-  derives visible clips via `ClipSearch`; turns key presses into intents.
-- **PasteService** — writes the clip, hides the panel, posts ⌘V with
+  derives visible clips via `ClipSearch`; carries out commands (move, copy,
+  pin, delete, clear with an inline confirm); refreshes when the store
+  changes. Views only render it; caches (app icons, thumbnails) live in
+  `PanelResources`.
+- **PasteService** — writes the clip, tells the monitor its change count
+  and marks the clip used. Next (M4): hide the panel and post ⌘V with
   `CGEvent` (layout-aware key code) if `CGPreflightPostEventAccess()`;
   otherwise copy-only plus a hint.
+- **Snapshots** — `Kept --render-snapshots <dir>` fills a temporary store
+  with `SampleHistory`, renders the panel offscreen at 2× in light and
+  dark (opaque background: vibrancy doesn't draw offscreen) and exits. CI
+  runs it and uploads the PNGs as the `panel-snapshots` artifact.
 - **Hotkeys** — `KeyboardShortcuts` package (Carbon `RegisterEventHotKey`
   under the hood; no permission prompt; recorder UI for settings).
 

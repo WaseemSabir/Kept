@@ -43,8 +43,8 @@ Notes:
 ## M2 — Clipboard capture
 - ☑ `PasteboardSnapshot` + `CapturePolicy` (core): nspasteboard.org markers, legacy password types, excluded apps, whitespace-only, size caps, skipped heavy types
 - ☑ Primary kind detection: text / rich text / link / image / file(s) / color
-- ☐ `PasteboardMonitor` (app): `changeCount` polling with tolerance, source app (`org.nspasteboard.source` → frontmost app)
-- ◐ Skip Kept's own writes; pause capture; ignore next copy — core: `app.kept.Kept.own` marker and pause in `CapturePolicy`; app: skip own change counts, ignore next copy
+- ☑ `PasteboardMonitor` (app): `changeCount` polling with tolerance, source app (`org.nspasteboard.source` → frontmost app)
+- ☑ Skip Kept's own writes; pause capture; ignore next copy — core: `app.kept.Kept.own` marker and pause in `CapturePolicy`; app: own change counts, pause, one-shot ignore (menu/shortcut UI comes with M6/M7)
 - ☑ Default excluded apps (Passwords, Keychain Access, 1Password 7/8, Bitwarden, KeePassXC) in `PreferenceDefaults`
 
 Notes:
@@ -57,22 +57,33 @@ Notes:
 ## M3 — The panel
 - ☑ Non-activating floating `NSPanel` hosting SwiftUI; centered on the active screen (M0)
 - ☑ Global hotkey ⇧⌘V (KeyboardShortcuts) toggles the panel (M0)
-- ◐ Search field (always focused), live filtering, fuzzy-ish matching — core `ClipSearch` done (M1): 5,000 clips in ~4 ms per query (release)
-- ☐ List with quick-paste numbers, pinned section, kind-aware rows (swatch, thumbnail, host/path, mono for code)
-- ☐ Preview pane with facts (source, copied, size)
-- ☐ Footer with shortcut hints; empty states
-- ◐ Design tokens (`Theme`) and highlighter selection — tokens done in M0
-- ☐ Keyboard: ↑/↓ ⌃N/⌃P, ⌘↑/⌘↓, PgUp/PgDn, Esc (clear → close), ⌃U, Tab/⇧Tab type filter
+- ☑ Search field (always focused), live filtering, fuzzy-ish matching — core `ClipSearch` (M1): 5,000 clips in ~4 ms per query (release)
+- ☑ List with quick-paste numbers, pinned section, kind-aware rows (swatch, thumbnail, host/path, mono for code)
+- ☑ Preview pane with facts (source, copied, size)
+- ☑ Footer with shortcut hints; empty states
+- ☑ Design tokens (`Theme`) and highlighter selection
+- ☑ Keyboard: ↑/↓ ⌃N/⌃P, ⌘↑/⌘↓, PgUp/PgDn, Esc (clear → close), ⌃U, Tab/⇧Tab type filter
+
+Notes:
+- Capture (M2) and the panel (M3) landed together as A1. `CaptureService` builds clips off
+  the main actor, side by side, so a slow image never holds up later copies; a read is dropped
+  if `changeCount` moves while it runs (privacy race), and the next poll takes the new copy.
+- The panel routes every key-down through `PanelKeyRouter` before the search field sees it
+  (except while an input method composes); letters match `charactersIgnoringModifiers`.
+  ⌘X/⌘C/⌘V/⌘A/⌘Z are sent to the field by hand, since an agent app has no Edit menu.
+- ⏎ / ⌥⏎ / ⌘⏎ / ⌘1–9 / ⌥⌘1–9 copy and close for now; the footer says "Copy" until M4.
+- `Kept --render-snapshots <dir>` renders 13 states × light/dark; CI uploads them as the
+  `panel-snapshots` artifact.
 
 ## M4 — Paste
-- ☐ Write a clip back to the pasteboard (all representations / plain text only)
-- ☐ Synthesize ⌘V into the previous app (layout-aware key code), skip own write in monitor
-- ☐ ⏎ paste · ⌥⏎ plain · ⌘⏎ copy only · ⌘1–9 · ⌥⌘1–9
+- ☑ Write a clip back to the pasteboard (all representations / plain text only)
+- ◐ Synthesize ⌘V into the previous app (layout-aware key code), skip own write in monitor — own writes are skipped; ⌘V not yet
+- ◐ ⏎ paste · ⌥⏎ plain · ⌘⏎ copy only · ⌘1–9 · ⌥⌘1–9 — keys wired; each copies and closes until ⌘V lands
 - ☐ Permission: `CGPreflightPostEventAccess` / request on first paste; copy-only fallback with hint
 
 ## M5 — Pins & cleanup
-- ☐ ⌘P pin/unpin, pinned section order, reorder pins (drag)
-- ☐ ⌘⌫ delete, ⌥⌘⌫ clear unpinned (confirm)
+- ◐ ⌘P pin/unpin, pinned section order, reorder pins (drag) — drag to reorder not yet
+- ☑ ⌘⌫ delete, ⌥⌘⌫ clear unpinned (inline confirm bar, no modal)
 - ☐ Right-click context menu on rows
 
 ## M6 — Settings
@@ -88,13 +99,13 @@ Notes:
 - ☐ Reopen (launching again) opens Settings — escape hatch if the menu bar icon is hidden
 
 ## M8 — Images & files polish
-- ☐ TIFF → PNG re-encode, thumbnails (`CGImageSource`), image size cap
-- ☐ File icons and multi-file items; preview of images and files
+- ☑ TIFF → PNG re-encode, thumbnails (`CGImageSource`), image size cap
+- ☑ File icons and multi-file items; preview of images and files
 
 ## M9 — Onboarding, accessibility, release
 - ☐ First-paste permission sheet with version-aware copy; pasteboard privacy check (`accessBehavior`)
-- ☐ VoiceOver labels; Reduce Motion / Transparency / Increase Contrast
-- ☐ Snapshot renders of the panel for design review in CI
+- ◐ VoiceOver labels; Reduce Motion / Transparency / Increase Contrast — panel rows, filters and hints are labelled; no motion under Reduce Motion; stronger marker under Increase Contrast; needs a VoiceOver pass
+- ☑ Snapshot renders of the panel for design review in CI (`Kept --render-snapshots <dir>`, artifact `panel-snapshots`)
 - ☐ Release workflow (ad-hoc → signed → notarized when secrets exist), README screenshots
 
 ## Later (P2, only if it stays lean)

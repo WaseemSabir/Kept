@@ -31,6 +31,10 @@ There is exactly one brand color.
 | `hairline`   | `separatorColor`              | `separatorColor`              | Pane divider, footer rule |
 | `marker`     | `#FFD84D` @ 60% under text    | `#E8B73A` @ 30% under text    | Selection highlight, pin notch |
 | `markerInk`  | `#8A6A00`                     | `#F2C94C`                     | Pin glyph, active filter text |
+| `markerNotch`| `#F5C400`                     | `#E8B73A`                     | Pin notch (full strength, so a 3 pt mark reads) |
+
+With Increase Contrast on, `marker` rises to 95% (light) / 50% (dark) and
+`markerInk` darkens to `#5C4600` / lightens to `#FFE08A`.
 
 `marker` is a highlighter, not a button color: it is drawn as a soft,
 rounded swipe *behind* the selected row's text, the way you'd mark a line on
@@ -87,6 +91,26 @@ A single floating panel, ~720 × 460 pt, centered on the active screen
 - The preview pane shows the full clip and a small two-column fact list
   (label / value). No meta strings joined with dots.
 - Empty states say what to do: "Copy something and it shows up here."
+
+**As built (A1).** Details the wireframe leaves open:
+
+- Rows: number · kind glyph (swatch, thumbnail, file icon) · title ·
+  age · source app icon. The icons form one column on the trailing edge
+  and the age sits against them, so titles get the width.
+- The highlighter marks the row's *text* only, never the glyph, and runs a
+  little past both ends with the icon's chisel slant. The active filter
+  token gets the same mark, smaller.
+- Filter tokens are quiet text at the end of the search bar, not a
+  segmented control.
+- The footer shows only hints that apply now; with nothing selected it
+  says "esc Close" (or "esc Clear search"). Clearing history replaces the
+  footer with an inline confirmation ("Clear 13 unpinned clips? Pinned
+  clips stay." ⏎ / esc), never a modal, which would activate Kept.
+- Until pasting lands (M4), ⏎ copies, so the footer says "Copy".
+- Snapshots of every state, light and dark, come from
+  `Kept --render-snapshots <dir>` (CI artifact `panel-snapshots`); they
+  draw on the opaque window background because vibrancy doesn't render
+  offscreen.
 
 ### Principles
 
