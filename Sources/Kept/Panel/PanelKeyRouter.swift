@@ -44,8 +44,8 @@ enum PanelKeyRouter {
             return .movePage(by: 1)
         case KeyCode.returnKey, KeyCode.keypadEnter:
             switch modifiers {
-            case []: return .activate(plainText: false)
-            case .option: return .activate(plainText: true)
+            case []: return .activate(alternate: false)
+            case .option: return .activate(alternate: true)
             case .command: return .copyOnly
             default: return nil
             }
@@ -92,7 +92,7 @@ enum PanelKeyRouter {
             default: return nil
             }
         case .command:
-            if let row = digit(of: press) { return .activateRow(row - 1, plainText: false) }
+            if let row = digit(of: press) { return .activateRow(row - 1, alternate: false) }
             switch character {
             case "p": return .togglePin
             case "x": return .edit(.cut)
@@ -105,7 +105,7 @@ enum PanelKeyRouter {
         case [.command, .shift]:
             return character == "z" ? .edit(.redo) : nil
         case [.command, .option]:
-            return digit(of: press).map { .activateRow($0 - 1, plainText: true) }
+            return digit(of: press).map { .activateRow($0 - 1, alternate: true) }
         default:
             return nil
         }

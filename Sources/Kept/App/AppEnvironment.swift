@@ -12,6 +12,9 @@ final class AppEnvironment {
     let panelController: PanelController
     private let monitor: PasteboardMonitor
     private let captureService: CaptureService?
+    /// `nil` when the history couldn't be opened.
+    private let pasteService: PasteService?
+    private let hintController: PasteHintController
     private let statusItemController: StatusItemController
     private let hotkeyController: HotkeyController
 
@@ -27,22 +30,39 @@ final class AppEnvironment {
         let icons = IconCache()
         let resources = PanelResources(icons: icons, thumbnails: ThumbnailCache(store: opened.store))
 
-        var copier: PasteService?
+        let permission = PostEventPermission()
+        let hintController = PasteHintController(openSettings: { permission.openSettings() })
+        self.hintController = hintController
+        let pasteService: PasteService?
         if let store = opened.store {
             captureService = CaptureService(store: store, settings: { preferences.captureSettings })
-            copier = PasteService(store: store, writer: PasteboardWriter(), monitor: monitor)
+            pasteService = PasteService(
+                store: store,
+                writer: PasteboardWriter(),
+                monitor: monitor,
+                options: { preferences.pasteOptions },
+                permission: permission,
+                poster: PasteKeystrokePoster(layout: KeyboardLayout()),
+                focus: SystemKeyboardFocus(),
+                onboarding: PasteOnboarding(),
+                hints: hintController
+            )
         } else {
             captureService = nil
+            pasteService = nil
         }
+        self.pasteService = pasteService
 
         let model = PanelViewModel(
             store: opened.store,
             unavailableReason: opened.failure,
-            copier: copier,
+            paster: pasteService,
+            pasteOptions: { preferences.pasteOptions },
             appName: { icons.appName(for: $0) },
             capturePaused: { preferences.isPaused }
         )
         let panelController = PanelController(model: model, resources: resources)
+        panelController.willShow = { [hintController] in hintController.dismiss() }
         self.panelController = panelController
         statusItemController = StatusItemController(togglePanel: { [panelController] in panelController.toggle() })
         hotkeyController = HotkeyController()
@@ -50,12 +70,43 @@ final class AppEnvironment {
 
     /// Starts listening for Kept's global shortcuts and for copies.
     func start() {
-        hotkeyController.start(togglePanel: { [panelController] in panelController.toggle() })
+        hotkeyController.start(
+            togglePanel: { [panelController] in panelController.toggle() },
+            pastePlainText: { [weak self] in self?.pasteClipboardAsPlainText() },
+            togglePause: { [preferences] in preferences.isPaused.toggle() }
+        )
         if let captureService {
             monitor.onChange = { _ in captureService.captureCurrentContents() }
             monitor.start()
         }
         observeHistoryLimit()
+        observePause()
+    }
+
+    // MARK: Shortcuts
+
+    /// "Paste clipboard as plain text": the panel goes away first, so ⌘V
+    /// reaches the app underneath. A beep when there's no text to paste.
+    private func pasteClipboardAsPlainText() {
+        panelController.hide()
+        guard pasteService?.pasteClipboardAsPlainText() != nil else {
+            NSSound.beep()
+            return
+        }
+    }
+
+    /// Keeps the menu bar glyph in step with pausing, from the shortcut or
+    /// anywhere else.
+    private func observePause() {
+        statusItemController.setPaused(preferences.isPaused)
+        withObservationTracking {
+            _ = preferences.isPaused
+        } onChange: { [weak self] in
+            let environment = self
+            Task { @MainActor in
+                environment?.observePause()
+            }
+        }
     }
 
     // MARK: History

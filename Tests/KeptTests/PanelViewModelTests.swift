@@ -14,10 +14,11 @@ struct PanelViewModelTests {
 
     private func makeModel(
         _ texts: [String],
-        copier: RecordingCopier? = RecordingCopier()
+        paster: RecordingPaster? = RecordingPaster(),
+        options: PasteOptions = PasteOptions()
     ) throws -> (PanelViewModel, HistoryStore) {
         let store = try makeStore(in: directory, texts: texts)
-        let model = PanelViewModel(store: store, copier: copier)
+        let model = PanelViewModel(store: store, paster: paster, pasteOptions: { options })
         return (model, store)
     }
 
@@ -164,38 +165,96 @@ struct PanelViewModelTests {
 
     // MARK: Actions
 
-    @Test("Return copies the selection and closes; ⌘N copies row N")
+    @Test("⏎, ⌥⏎, ⌘⏎, ⌘N, ⌥⌘N and a double-click each ask for their paste")
     func activation() throws {
         defer { removeTemporaryDirectory(directory) }
-        let copier = RecordingCopier()
-        let (model, _) = try makeModel(["one", "two", "three"], copier: copier)
+        let paster = RecordingPaster()
+        let (model, _) = try makeModel(["one", "two", "three"], paster: paster)
         var dismissed = 0
         model.onDismiss = { dismissed += 1 }
 
         model.select(index: 1)
-        model.perform(.activate(plainText: true))
-        model.perform(.activateRow(2, plainText: false))
-        model.perform(.activateRow(8, plainText: false))
-        #expect(copier.copies == [
-            RecordingCopier.Copy(title: "two", asPlainText: true),
-            RecordingCopier.Copy(title: "three", asPlainText: false),
+        model.perform(.activate(alternate: false))
+        model.perform(.activate(alternate: true))
+        model.perform(.copyOnly)
+        model.perform(.activateRow(2, alternate: false))
+        model.perform(.activateRow(0, alternate: true))
+        // Row 9 doesn't exist: nothing happens.
+        model.perform(.activateRow(8, alternate: false))
+        model.activate(try #require(model.results.last))
+        #expect(paster.pastes == [
+            RecordingPaster.Paste(title: "two", request: .paste(alternate: false)),
+            RecordingPaster.Paste(title: "two", request: .paste(alternate: true)),
+            RecordingPaster.Paste(title: "two", request: .copyOnly),
+            RecordingPaster.Paste(title: "three", request: .paste(alternate: false)),
+            RecordingPaster.Paste(title: "one", request: .paste(alternate: true)),
+            RecordingPaster.Paste(title: "three", request: .paste(alternate: false)),
         ])
-        #expect(dismissed == 2)
+        #expect(paster.completed.count == 6)
+        #expect(dismissed == 6)
+        #expect(model.selectedClip?.title == "three")
+    }
+
+    @Test("The panel closes after the clip is written and before ⌘V, and passes its frame along")
+    func pasteOrder() throws {
+        defer { removeTemporaryDirectory(directory) }
+        let paster = RecordingPaster()
+        let log = EventLog()
+        paster.log = log
+        let (model, _) = try makeModel(["one"], paster: paster)
+        let frame = CGRect(x: 100, y: 200, width: 720, height: 460)
+        model.hintAnchor = { frame }
+        model.onDismiss = { log.events.append("dismiss") }
+
+        model.perform(.activate(alternate: false))
+        #expect(log.events == ["prepare", "dismiss", "complete"])
+        #expect(paster.anchors == [frame])
     }
 
     @Test("A failed copy keeps the panel open and says so")
     func copyFailure() throws {
         defer { removeTemporaryDirectory(directory) }
-        let copier = RecordingCopier()
-        copier.failure = TestSetupError(description: "nope")
-        let (model, _) = try makeModel(["one"], copier: copier)
+        let paster = RecordingPaster()
+        paster.failure = TestSetupError(description: "nope")
+        let (model, _) = try makeModel(["one"], paster: paster)
         var dismissed = false
         model.onDismiss = { dismissed = true }
-        model.perform(.activate(plainText: false))
+        model.perform(.activate(alternate: false))
         #expect(!dismissed)
+        #expect(paster.completed.isEmpty)
         #expect(model.notice == "Couldn't copy that clip.")
         model.perform(.moveSelection(by: 1))
         #expect(model.notice == nil)
+    }
+
+    @Test("Without a paster the panel stays open and says why")
+    func noPaster() throws {
+        defer { removeTemporaryDirectory(directory) }
+        let (model, _) = try makeModel(["one"], paster: nil)
+        var dismissed = false
+        model.onDismiss = { dismissed = true }
+        model.perform(.activate(alternate: false))
+        #expect(!dismissed)
+        #expect(model.notice == "Kept can't paste while its history is unavailable.")
+    }
+
+    @Test("Footer labels follow paste directly and always paste plain text")
+    func footerLabels() throws {
+        defer { removeTemporaryDirectory(directory) }
+        let store = try makeStore(in: directory, texts: ["one"])
+        let table: [(options: PasteOptions, primary: String, alternate: String, copyOnly: String?)] = [
+            (PasteOptions(pasteDirectly: true, alwaysPastePlainText: false), "Paste", "Paste as plain text", "Copy"),
+            (PasteOptions(pasteDirectly: true, alwaysPastePlainText: true), "Paste as plain text", "Paste with formatting", "Copy"),
+            (PasteOptions(pasteDirectly: false, alwaysPastePlainText: false), "Copy", "Copy as plain text", nil),
+            (PasteOptions(pasteDirectly: false, alwaysPastePlainText: true), "Copy as plain text", "Copy with formatting", nil),
+        ]
+        for row in table {
+            let options = row.options
+            let model = PanelViewModel(store: store, paster: RecordingPaster(), pasteOptions: { options })
+            #expect(model.primaryActionTitle == row.primary, "\(options)")
+            #expect(model.alternateActionTitle == row.alternate, "\(options)")
+            #expect(model.copyOnlyActionTitle == row.copyOnly, "\(options)")
+        }
     }
 
     @Test("Clearing unpinned clips asks first and keeps pins")
@@ -214,7 +273,7 @@ struct PanelViewModelTests {
         #expect(store.recent.count == 2)
 
         model.perform(.requestClearUnpinned)
-        model.perform(.activate(plainText: false))
+        model.perform(.activate(alternate: false))
         #expect(!model.isConfirmingClear)
         #expect(store.recent.isEmpty)
         #expect(titles(model) == ["three"])

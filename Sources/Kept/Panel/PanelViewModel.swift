@@ -51,10 +51,14 @@ final class PanelViewModel {
 
     /// Closes the panel.
     @ObservationIgnored var onDismiss: @MainActor () -> Void = {}
+    /// The panel's frame on screen, so a copy-only hint can appear where
+    /// the panel was.
+    @ObservationIgnored var hintAnchor: @MainActor () -> CGRect? = { nil }
     /// Rows a PgUp / PgDn moves.
     @ObservationIgnored var pageSize = 10
 
-    private let copier: (any ClipCopying)?
+    private let paster: (any ClipPasting)?
+    private let pasteOptions: @MainActor () -> PasteOptions
     private let appName: @MainActor (String) -> String?
     private let capturePaused: @MainActor () -> Bool
     @ObservationIgnored private var cachedPreview: (key: PreviewKey, preview: ClipPreview)?
@@ -68,13 +72,15 @@ final class PanelViewModel {
     init(
         store: HistoryStore?,
         unavailableReason: String? = nil,
-        copier: (any ClipCopying)? = nil,
+        paster: (any ClipPasting)? = nil,
+        pasteOptions: @escaping @MainActor () -> PasteOptions = { PasteOptions() },
         appName: @escaping @MainActor (String) -> String? = { _ in nil },
         capturePaused: @escaping @MainActor () -> Bool = { false }
     ) {
         self.store = store
         self.unavailableReason = unavailableReason
-        self.copier = copier
+        self.paster = paster
+        self.pasteOptions = pasteOptions
         self.appName = appName
         self.capturePaused = capturePaused
         refresh(selecting: .first)
@@ -99,9 +105,25 @@ final class PanelViewModel {
     /// Unpinned clips in the whole history, for the clear confirmation.
     var unpinnedCount: Int { store?.recent.count ?? 0 }
 
-    /// What ⏎ does. Copy for now; pasting into the previous app comes next.
-    var primaryActionTitle: String { "Copy" }
-    var plainTextActionTitle: String { "Copy as plain text" }
+    /// What ⏎ does: "Paste", or "Copy" when pasting directly is off; "as
+    /// plain text" when that's the default.
+    var primaryActionTitle: String {
+        let options = pasteOptions()
+        let verb = options.pasteDirectly ? "Paste" : "Copy"
+        return options.alwaysPastePlainText ? "\(verb) as plain text" : verb
+    }
+
+    /// What ⌥⏎ does: the other format.
+    var alternateActionTitle: String {
+        let options = pasteOptions()
+        let verb = options.pasteDirectly ? "Paste" : "Copy"
+        return options.alwaysPastePlainText ? "\(verb) with formatting" : "\(verb) as plain text"
+    }
+
+    /// What ⌘⏎ does, or `nil` when ⏎ already only copies.
+    var copyOnlyActionTitle: String? {
+        pasteOptions().pasteDirectly ? "Copy" : nil
+    }
     var pinActionTitle: String { selectedClip?.isPinned == true ? "Unpin" : "Pin" }
 
     /// The row where unpinned clips start below the pinned section, when the
@@ -206,7 +228,7 @@ final class PanelViewModel {
         if case .edit = command { return false }
         if isConfirmingClear {
             // ⏎ confirms; any other command (Esc included) backs out.
-            if command == .activate(plainText: false) {
+            if command == .activate(alternate: false) {
                 confirmClearUnpinned()
             } else {
                 isConfirmingClear = false
@@ -224,12 +246,10 @@ final class PanelViewModel {
             select(index: 0)
         case .selectLast:
             select(index: results.count - 1)
-        case .activate(let plainText):
-            copy(selectedClip, plainText: plainText)
-        case .copyOnly:
-            copy(selectedClip, plainText: false)
-        case .activateRow(let row, let plainText):
-            if results.indices.contains(row) { copy(results[row], plainText: plainText) }
+        case .activate, .copyOnly:
+            if let request = command.pasteRequest { paste(selectedClip, request) }
+        case .activateRow(let row, let alternate):
+            if results.indices.contains(row) { paste(results[row], .paste(alternate: alternate)) }
         case .togglePin:
             togglePin()
         case .delete:
@@ -266,10 +286,10 @@ final class PanelViewModel {
         selectedID = clip.id
     }
 
-    /// Selects `clip` and puts it back, like ⏎ (a double-click).
+    /// Selects `clip` and pastes it, like ⏎ (a double-click).
     func activate(_ clip: Clip) {
         select(clip)
-        copy(clip, plainText: false)
+        paste(clip, .paste(alternate: false))
     }
 
     func confirmClearUnpinned() {
@@ -315,18 +335,25 @@ final class PanelViewModel {
         select(index: current + offset)
     }
 
-    private func copy(_ clip: Clip?, plainText: Bool) {
+    /// Writes `clip`, closes the panel, then pastes (or shows a hint where
+    /// the panel was). If the clip can't be written the panel stays open and
+    /// says so.
+    private func paste(_ clip: Clip?, _ request: PasteRequest) {
         guard let clip else { return }
-        guard let copier else {
-            notice = "Kept can't copy while its history is unavailable."
+        guard let paster else {
+            notice = "Kept can't paste while its history is unavailable."
             return
         }
+        let plan: PastePlan
         do {
-            try copier.copy(clip, asPlainText: plainText)
-            onDismiss()
+            plan = try paster.prepare(clip, for: request)
         } catch {
             report("Couldn't copy that clip.", error)
+            return
         }
+        let anchor = hintAnchor()
+        onDismiss()
+        paster.complete(plan, anchor: anchor)
     }
 
     private func togglePin() {

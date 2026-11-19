@@ -46,6 +46,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(quit)
     }
 
+    /// Shows the hollow marker while capture is paused.
+    func setPaused(_ isPaused: Bool) {
+        guard let button = statusItem.button else { return }
+        button.image = MenuBarIcon.image(paused: isPaused)
+        button.toolTip = isPaused ? "Kept: capture paused" : "Kept"
+    }
+
     @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
         if Self.wantsMenu(NSApplication.shared.currentEvent) {
             showMenu()

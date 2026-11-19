@@ -8,12 +8,14 @@ enum PanelCommand: Equatable, Sendable {
     case selectFirst
     /// ⌘↓, End.
     case selectLast
-    /// ⏎ (and ⌥⏎ for plain text): put the selected clip back and close.
-    case activate(plainText: Bool)
+    /// ⏎: paste the selected clip and close. ⌥⏎ (`alternate`) pastes it
+    /// in the other format: plain text, or with formatting when "always
+    /// paste plain text" is on.
+    case activate(alternate: Bool)
     /// ⌘⏎: copy the selected clip without pasting, and close.
     case copyOnly
-    /// ⌘1–⌘9 (and ⌥⌘1–⌥⌘9 for plain text): act on row N, counted from 0.
-    case activateRow(Int, plainText: Bool)
+    /// ⌘1–⌘9 (⌥⌘1–⌥⌘9 for the other format): paste row N, counted from 0.
+    case activateRow(Int, alternate: Bool)
     /// ⌘P.
     case togglePin
     /// ⌘⌫.
@@ -30,6 +32,17 @@ enum PanelCommand: Equatable, Sendable {
     /// ⌘X, ⌘C, ⌘V, ⌘A, ⌘Z, ⇧⌘Z in the search field. Kept has no Edit menu
     /// (it's an agent app), so the panel sends these actions itself.
     case edit(TextEditAction)
+}
+
+extension PanelCommand {
+    /// The paste the command asks for; `nil` for every other command.
+    var pasteRequest: PasteRequest? {
+        switch self {
+        case .activate(let alternate), .activateRow(_, let alternate): .paste(alternate: alternate)
+        case .copyOnly: .copyOnly
+        default: nil
+        }
+    }
 }
 
 /// A standard text editing action for the search field.

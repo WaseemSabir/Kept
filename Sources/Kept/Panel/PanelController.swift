@@ -7,6 +7,8 @@ import SwiftUI
 final class PanelController {
     private let panel: FloatingPanel
     private let model: PanelViewModel
+    /// Called just before the panel shows (to put away a copy-only hint).
+    var willShow: (@MainActor () -> Void)?
 
     init(model: PanelViewModel, resources: PanelResources) {
         self.model = model
@@ -15,6 +17,7 @@ final class PanelController {
         panel.onResignKey = { [weak self] in self?.hide() }
         panel.keyHandler = { [weak self] press in self?.handle(press) ?? false }
         model.onDismiss = { [weak self] in self?.hide() }
+        model.hintAnchor = { [weak self] in self?.panel.frame }
         model.pageSize = Self.visibleRowCount - 1
     }
 
@@ -32,6 +35,7 @@ final class PanelController {
     /// the screen under the mouse and makes it key. `orderFrontRegardless` +
     /// `makeKey` (rather than activating Kept) keeps the user's app frontmost.
     func show() {
+        willShow?()
         model.prepareForShow()
         center(on: screenUnderMouse())
 

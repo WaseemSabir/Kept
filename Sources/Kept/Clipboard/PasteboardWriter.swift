@@ -15,9 +15,11 @@ struct PasteboardWriter {
     }
 
     /// Replaces the pasteboard's contents with `items`, one pasteboard item
-    /// each (multi-file pastes need separate items). Returns the pasteboard's
-    /// new change count, or `nil` when nothing was written.
-    func write(_ items: [PasteboardItem], sourceBundleID: String?) -> Int? {
+    /// each (multi-file pastes need separate items). `markers` (privacy
+    /// markers such as `.concealed`) go on the first item, so other
+    /// clipboard managers skip the write too. Returns the pasteboard's new
+    /// change count, or `nil` when nothing was written.
+    func write(_ items: [PasteboardItem], sourceBundleID: String?, markers: [PasteboardType] = []) -> Int? {
         let objects = items
             .filter { !$0.representations.isEmpty }
             .map { item -> NSPasteboardItem in
@@ -29,7 +31,9 @@ struct PasteboardWriter {
             }
         guard let first = objects.first else { return nil }
         // A non-empty value: some pasteboard readers drop empty types.
-        first.setString("1", forType: Self.nativeType(.keptOwn))
+        for marker in [PasteboardType.keptOwn] + markers {
+            first.setString("1", forType: Self.nativeType(marker))
+        }
         if let sourceBundleID, !sourceBundleID.isEmpty {
             first.setString(sourceBundleID, forType: Self.nativeType(.source))
         }
@@ -50,7 +54,8 @@ struct PasteboardWriter {
         return texts.map { PasteboardItem([ClipRepresentation(.string, string: $0)]) }
     }
 
-    private static func plainText(of item: PasteboardItem) -> String? {
+    /// An item's text: its string, else its URL, else the text of its RTF.
+    static func plainText(of item: PasteboardItem) -> String? {
         if let data = item.data(for: .string) ?? item.data(for: .url) {
             return String(decoding: data, as: UTF8.self)
         }

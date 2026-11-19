@@ -67,20 +67,16 @@ struct PasteboardWriterTests {
         #expect(PasteboardWriter.payload(of: image, plainTextOnly: true) == image)
     }
 
-    @Test("Copying a clip writes it, tells the monitor and moves the clip to the top")
-    func pasteServiceRoundTrip() throws {
-        let directory = try makeTemporaryDirectory()
-        defer { removeTemporaryDirectory(directory) }
+    @Test("Privacy markers go along with the write")
+    func writesMarkers() throws {
         let pasteboard = makePasteboard()
         defer { pasteboard.releaseGlobally() }
-        let store = try makeStore(in: directory, texts: ["newest", "older"])
-        let monitor = PasteboardMonitor(pasteboard: pasteboard, isPaused: { false })
-        let service = PasteService(store: store, writer: PasteboardWriter(pasteboard: pasteboard), monitor: monitor)
+        let items = [PasteboardItem([ClipRepresentation(.string, string: "hunter2")])]
 
-        let older = try #require(store.recent.last)
-        try service.copy(older, asPlainText: false)
-        #expect(pasteboard.string(forType: .string) == "older")
-        #expect(monitor.poll() == .ownWrite)
-        #expect(store.recent.map(\.title) == ["older", "newest"])
+        _ = try #require(PasteboardWriter(pasteboard: pasteboard).write(items, sourceBundleID: nil, markers: [.concealed]))
+        let types = Set((pasteboard.types ?? []).map(\.rawValue))
+        #expect(types.contains(PasteboardType.concealed.rawValue))
+        #expect(types.contains(PasteboardType.keptOwn.rawValue))
+        #expect(!types.contains(PasteboardType.source.rawValue))
     }
 }

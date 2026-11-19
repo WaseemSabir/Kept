@@ -48,21 +48,41 @@ func makeStore(in directory: URL, texts: [String]) throws -> HistoryStore {
     return store
 }
 
-/// Records what the panel asked to copy instead of touching a pasteboard.
+/// Records what the panel asked to paste instead of touching a pasteboard.
 @MainActor
-final class RecordingCopier: ClipCopying {
-    struct Copy: Equatable {
+final class RecordingPaster: ClipPasting {
+    struct Paste: Equatable {
         let title: String
-        let asPlainText: Bool
+        let request: PasteRequest
     }
 
-    private(set) var copies: [Copy] = []
+    private(set) var pastes: [Paste] = []
+    private(set) var completed: [PastePlan] = []
+    private(set) var anchors: [CGRect?] = []
     var failure: (any Error)?
+    /// What `prepare` returns.
+    var plan = PastePlan.paste(plainText: false)
+    /// Shared with the panel's `onDismiss`, to check what happens first.
+    var log: EventLog?
 
-    func copy(_ clip: Clip, asPlainText: Bool) throws {
+    func prepare(_ clip: Clip, for request: PasteRequest) throws -> PastePlan {
         if let failure { throw failure }
-        copies.append(Copy(title: clip.title, asPlainText: asPlainText))
+        pastes.append(Paste(title: clip.title, request: request))
+        log?.events.append("prepare")
+        return plan
     }
+
+    func complete(_ plan: PastePlan, anchor: CGRect?) {
+        completed.append(plan)
+        anchors.append(anchor)
+        log?.events.append("complete")
+    }
+}
+
+/// The order things happened in, across objects.
+@MainActor
+final class EventLog {
+    var events: [String] = []
 }
 
 /// A private, uniquely named pasteboard, so tests never touch the user's

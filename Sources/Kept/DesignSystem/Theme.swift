@@ -95,6 +95,10 @@ enum Theme {
         static let emptyTitle = Font.system(size: 13, weight: .medium)
         /// The second line of an empty state.
         static let emptyHint = Font.system(size: 12)
+        /// "Copied. Press ⌘V to paste." in the copy-only hint.
+        static let hintTitle = Font.system(size: 13, weight: .medium)
+        /// Why Kept didn't paste, under the hint's title.
+        static let hintDetail = Font.system(size: 12)
     }
 
     @MainActor
@@ -130,12 +134,32 @@ enum Theme {
         static let rowGlyphSize: CGFloat = 16
         static let colorSwatchSize: CGFloat = 14
         static let factLabelWidth: CGFloat = 84
+
+        /// The copy-only hint: the panel's material, a quiet rounded card.
+        static let hintMaterial = panelMaterial
+        static let hintCornerRadius: CGFloat = 12
+        static let hintPadding: CGFloat = 12
+        /// The hint that explains the permission wraps at this width; the
+        /// short one is as wide as its line.
+        static let hintWidth: CGFloat = 300
+        /// The hint's distance above the bottom edge of where the panel was.
+        static let hintPanelOffset: CGFloat = 24
+        /// The hint's distance above the bottom of the screen, with no panel.
+        static let hintScreenOffset: CGFloat = 72
     }
 
-    /// Only the panel's appearance animates, and not under Reduce Motion.
+    /// Only the panel and the copy-only hint fade, and not under Reduce
+    /// Motion.
     @MainActor
     enum Motion {
         static let panelAppearDuration: TimeInterval = 0.12
         static let panelAppearScale: CGFloat = 0.98
+        /// The copy-only hint fades in and out this fast.
+        static let hintFadeDuration: TimeInterval = 0.12
+        /// How long "Copied. Press ⌘V to paste." stays.
+        static let copiedHintDuration: TimeInterval = 2.5
+        /// How long the hint with the "Allow Kept to paste…" button stays
+        /// (longer while the pointer is over it).
+        static let permissionHintDuration: TimeInterval = 8
     }
 }

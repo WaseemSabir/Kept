@@ -7,7 +7,8 @@ import SwiftUI
 ///
 /// Every state renders at 2× in light and dark mode, from a temporary history
 /// filled with `SampleHistory`. Vibrancy doesn't draw offscreen, so the panel
-/// sits on the opaque window background instead.
+/// sits on the opaque window background instead. The copy-only hint renders
+/// the same way, as a card on a desktop-gray canvas.
 @MainActor
 enum SnapshotRenderer {
     static let flag = "--render-snapshots"
@@ -43,7 +44,15 @@ enum SnapshotRenderer {
         let name: String
         var history: History = .sample
         var isPaused = false
+        var options = PasteOptions()
         var configure: @MainActor (PanelViewModel) -> Void = { _ in }
+    }
+
+    /// The copy-only hint, for one macOS version's wording.
+    private struct HintScene {
+        let name: String
+        let hint: PastePlan.Hint
+        var osMajorVersion = 26
     }
 
     private enum History {
@@ -65,6 +74,14 @@ enum SnapshotRenderer {
         Scene(name: "confirm-clear") { $0.perform(.requestClearUnpinned) },
         Scene(name: "paused", isPaused: true),
         Scene(name: "empty", history: .empty),
+        Scene(name: "always-plain-text", options: PasteOptions(alwaysPastePlainText: true)),
+        Scene(name: "copy-only-mode", options: PasteOptions(pasteDirectly: false)),
+    ]
+
+    private static let hintScenes: [HintScene] = [
+        HintScene(name: "hint-allow-pasting", hint: .allowPasting),
+        HintScene(name: "hint-allow-pasting-macos27", hint: .allowPasting, osMajorVersion: 27),
+        HintScene(name: "hint-copied", hint: .pressCommandV),
     ]
 
     private static func select(_ model: PanelViewModel, where matches: (Clip) -> Bool) {
@@ -105,14 +122,19 @@ enum SnapshotRenderer {
             for appearance in Appearance.allCases {
                 let store = scene.history == .sample ? sample : empty
                 let isPaused = scene.isPaused
+                let options = scene.options
                 let model = PanelViewModel(
                     store: store,
+                    pasteOptions: { options },
                     appName: { icons.appName(for: $0) },
                     capturePaused: { isPaused }
                 )
                 model.prepareForShow()
+                let size = Theme.Layout.panelSize
                 let view = PanelView(model: model, resources: scene.history == .sample ? sampleResources : emptyResources)
-                let png = try await renderInWindow(view, appearance: appearance) {
+                    .frame(width: size.width, height: size.height)
+                    .background(Theme.Colors.panelBackground)
+                let png = try await renderInWindow(view, size: size, appearance: appearance) {
                     // After the search field has taken focus, as if typed.
                     scene.configure(model)
                 }
@@ -120,23 +142,46 @@ enum SnapshotRenderer {
                 written += 1
             }
         }
+        for scene in hintScenes {
+            for appearance in Appearance.allCases {
+                let png = try await renderInWindow(hintCard(scene), size: nil, appearance: appearance) {}
+                try png.write(to: directory.appendingPathComponent("\(scene.name)-\(appearance.rawValue).png"))
+                written += 1
+            }
+        }
         return written
+    }
+
+    /// The hint as it floats over an app: an opaque card standing in for
+    /// the vibrancy, with margin on a desktop-gray canvas.
+    private static func hintCard(_ scene: HintScene) -> some View {
+        let shape = RoundedRectangle(cornerRadius: Theme.Layout.hintCornerRadius, style: .continuous)
+        return PasteHintView(
+            hint: scene.hint,
+            permissionDetail: PasteHintCopy.permissionDetail(osMajorVersion: scene.osMajorVersion)
+        )
+        .background(Theme.Colors.panelBackground, in: shape)
+        .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
+        .padding(28)
+        .background(Color(nsColor: .underPageBackgroundColor))
     }
 
     /// Draws `view` in a borderless window that's never shown, with AppKit's
     /// `cacheDisplay`, so AppKit-backed views (the search field, scroll views)
-    /// draw as they do on screen. `prepare` runs once the view has appeared.
+    /// draw as they do on screen. `size` `nil` means the view's own ideal
+    /// size. `prepare` runs once the view has appeared.
     private static func renderInWindow(
-        _ view: PanelView,
+        _ view: some View,
+        size fixedSize: CGSize?,
         appearance: Appearance,
         prepare: () -> Void
     ) async throws -> Data {
-        let size = Theme.Layout.panelSize
-        let root = view
-            .frame(width: size.width, height: size.height)
-            .background(Theme.Colors.panelBackground)
-            .environment(\.colorScheme, appearance.colorScheme)
+        let root = view.environment(\.colorScheme, appearance.colorScheme)
         let hostingView = NSHostingView(rootView: root)
+        let size = fixedSize ?? {
+            let fitting = hostingView.fittingSize
+            return CGSize(width: fitting.width.rounded(.up), height: fitting.height.rounded(.up))
+        }()
         hostingView.frame = NSRect(origin: .zero, size: size)
 
         let window = NSWindow(

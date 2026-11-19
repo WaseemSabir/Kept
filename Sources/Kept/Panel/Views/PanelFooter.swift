@@ -10,7 +10,10 @@ struct PanelFooter: View {
             // Hints only for what the keys can do right now.
             if model.selectedClip != nil {
                 KeyHint(keys: "⏎", label: model.primaryActionTitle)
-                KeyHint(keys: "⌥⏎", label: model.plainTextActionTitle)
+                KeyHint(keys: "⌥⏎", label: model.alternateActionTitle)
+                if let copyOnlyTitle = model.copyOnlyActionTitle {
+                    KeyHint(keys: "⌘⏎", label: copyOnlyTitle)
+                }
                 KeyHint(keys: "⌘P", label: model.pinActionTitle)
                 KeyHint(keys: "⌘⌫", label: "Delete")
             } else if model.isSearching {
