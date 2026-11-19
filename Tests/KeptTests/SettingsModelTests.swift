@@ -342,7 +342,7 @@ struct SettingsModelTests {
         #expect(model.forgetAfterChoices == [.never, .day, .week, .month])
         #expect(model.forgetAfterNote == "Unpinned clips stay until your history is full.")
         harness.preferences.forgetAfter = .week
-        #expect(model.forgetAfterNote == "Counted from a clip's last copy or paste. Pins always stay.")
+        #expect(model.forgetAfterNote == "Counted from a clip's last copy or paste. Pinned clips stay.")
         #expect(SettingsModel.title(for: .week) == "After a week")
     }
 

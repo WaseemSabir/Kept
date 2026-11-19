@@ -119,7 +119,7 @@ struct EditingBar: View {
                     .foregroundStyle(Theme.Colors.ink)
                     .lineLimit(1)
             } else if isRenaming {
-                Text("Leave it empty to show the clip's text.")
+                Text("Leave it empty to remove the name.")
                     .font(Theme.Typography.footerKey)
                     .foregroundStyle(Theme.Colors.inkMuted)
                     .lineLimit(1)

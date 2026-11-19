@@ -715,7 +715,7 @@ final class PanelViewModel {
         endEditing()
         do {
             let renamed = try store.rename(id, to: name)
-            announce(renamed.customTitle.map { "Renamed to \($0)." } ?? "Name removed. The clip shows its text.")
+            announce(renamed.customTitle.map { "Renamed to \($0)." } ?? "Name removed.")
         } catch {
             report("Couldn't rename that clip.", error)
         }
@@ -780,7 +780,7 @@ final class PanelViewModel {
     }
 
     private func refuseTooLongEdit() {
-        let message = "Kept edits clips of up to \(Self.maxEditableCharacters.formatted()) characters."
+        let message = "Kept edits up to \(Self.maxEditableCharacters.formatted()) characters."
         notice = message
         announce(message)
     }
@@ -790,12 +790,13 @@ final class PanelViewModel {
         clip.metadata.looksLikeCode || clip.kind == .link || clip.kind == .color
     }
 
-    /// Why ⌘E does nothing for an image or files, and what to do instead.
+    /// Why ⌘E does nothing for an image or files, and what to do instead;
+    /// short enough for the footer beside its key hints.
     static func notEditableMessage(for clip: Clip) -> String {
         switch clip.kind {
-        case .image: "Only text can be edited. Press ⌘R to rename this image."
-        case .file where (clip.metadata.fileCount ?? 1) > 1: "Only text can be edited. Press ⌘R to rename these files."
-        default: "Only text can be edited. Press ⌘R to rename this file."
+        case .image: "Images can't be edited. ⌘R renames it."
+        case .file where (clip.metadata.fileCount ?? 1) > 1: "Files can't be edited. ⌘R renames them."
+        default: "Files can't be edited. ⌘R renames it."
         }
     }
 

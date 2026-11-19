@@ -177,6 +177,10 @@ enum SnapshotRenderer {
                 ) {
                     // After the search field has taken focus, as if typed.
                     scene.configure(model)
+                } afterRender: {
+                    // A rename field losing the keyboard as the window
+                    // closes would save into the shared sample history.
+                    model.cancelEditing()
                 }
                 try png.write(to: directory.appendingPathComponent("\(scene.name)-\(appearance.rawValue).png"))
                 written += 1
@@ -210,13 +214,15 @@ enum SnapshotRenderer {
     /// Draws `view` in a borderless window that's never shown, with AppKit's
     /// `cacheDisplay`, so AppKit-backed views (the search field, scroll views)
     /// draw as they do on screen. `size` `nil` means the view's own ideal
-    /// size. `prepare` runs once the view has appeared.
+    /// size. `prepare` runs once the view has appeared; `afterRender` once
+    /// it's drawn, before the window closes.
     static func renderInWindow(
         _ view: some View,
         size fixedSize: CGSize?,
         appearance: Appearance,
         increasedContrast: Bool = false,
-        prepare: () -> Void
+        prepare: () -> Void,
+        afterRender: () -> Void = {}
     ) async throws -> Data {
         // The high-contrast appearance draws system colors stronger; Kept's
         // own tokens follow `forcesIncreasedContrast`.
@@ -249,7 +255,9 @@ enum SnapshotRenderer {
         try await Task.sleep(for: .milliseconds(250))
         hostingView.layoutSubtreeIfNeeded()
         hostingView.displayIfNeeded()
-        return try png(of: hostingView)
+        let data = try png(of: hostingView)
+        afterRender()
+        return data
     }
 
     /// `view` and its subviews drawn at 2× with `cacheDisplay`, as PNG data.

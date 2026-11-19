@@ -88,7 +88,7 @@ struct PanelEditingTests {
         model.nameDraft = "   "
         model.perform(.commitEditing)
         #expect(store.recent[1].customTitle == nil)
-        #expect(messages.last == "Name removed. The clip shows its text.")
+        #expect(messages.last == "Name removed.")
     }
 
     @Test("Esc cancels the rename, not the panel; a second Esc closes it")
@@ -353,13 +353,13 @@ struct PanelEditingTests {
         #expect(model.selectedClip?.id == files.id)
         model.perform(.beginTextEdit)
         #expect(model.editing == nil)
-        #expect(model.notice == "Only text can be edited. Press ⌘R to rename these files.")
+        #expect(model.notice == "Files can't be edited. ⌘R renames them.")
 
         model.select(model.results[1])
         #expect(model.selectedClip?.id == image.id)
         #expect(press(model, 14, .command, "e"))
         #expect(model.editing == nil)
-        #expect(model.notice == "Only text can be edited. Press ⌘R to rename this image.")
+        #expect(model.notice == "Images can't be edited. ⌘R renames it.")
         #expect(messages.last == model.notice)
 
         // ⌘R still names them.
@@ -417,7 +417,7 @@ struct PanelEditingTests {
         model.refresh(selecting: .first)
         model.perform(.beginTextEdit)
         #expect(model.editing == nil)
-        #expect(model.notice == "Kept edits clips of up to 100,000 characters.")
+        #expect(model.notice == "Kept edits up to 100,000 characters.")
     }
 
     @Test("A big clip's text is read off the main actor, then edited")

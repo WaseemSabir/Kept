@@ -28,7 +28,7 @@ struct RenameField: View {
                 .padding(.leading, ClipGlyph.shows(clip) ? 0 : -Theme.Layout.renameFieldInset)
                 .onSubmit { model.commitEditing() }
                 .accessibilityLabel("Name")
-                .accessibilityHint("Press Return to save, or Escape to cancel. Leave it empty to show the clip's text.")
+                .accessibilityHint("Press Return to save, or Escape to cancel. Leave it empty to remove the name.")
         }
         .onAppear {
             // After the row is on screen, or focus doesn't move.

@@ -256,7 +256,7 @@ final class SettingsModel {
     var forgetAfterNote: String {
         switch preferences.forgetAfter {
         case .never: "Unpinned clips stay until your history is full."
-        case .day, .week, .month: "Counted from a clip's last copy or paste. Pins always stay."
+        case .day, .week, .month: "Counted from a clip's last copy or paste. Pinned clips stay."
         }
     }
 

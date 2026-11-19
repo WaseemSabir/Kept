@@ -143,7 +143,7 @@ clip can carry a name, and text can be corrected in place.
 │ 2  ▧ [Studio address            ]   9d  ◉      │   the content muted after it
 │                                                │   ⌘R: a native rounded field
 ├────────────────────────────────────────────────┤
-│ ⏎ Rename   esc Cancel    Leave it empty to show the clip's text. │
+│ ⏎ Rename   esc Cancel           Leave it empty to remove the name. │
 ```
 
 - **Rename (⌘R).** The selected row's title becomes a native rounded text
@@ -167,17 +167,18 @@ clip can carry a name, and text can be corrected in place.
   stay as typed. ⌘S (or ⌘⏎) saves in place and keeps the clip selected;
   ⏎ and Tab type; Esc cancels. Moving away (another row, the search, the
   filter, closing the panel) saves.
-- **Images and files** can't be edited: ⌘E puts "Only text can be edited.
-  Press ⌘R to rename this image." in the footer instead of a beep.
+- **Images and files** can't be edited: ⌘E puts "Images can't be edited.
+  ⌘R renames it." in the footer instead of a beep.
 - **The footer** while renaming or editing is a bar like the clear
   confirmation: "⏎ Rename" or "⌘S Save", then "esc Cancel" (both
   clickable), and on the right a notice or, while renaming, "Leave it
-  empty to show the clip's text." The usual footer doesn't list ⌘R and
+  empty to remove the name." Notices stay near 40 characters so the key
+  hints beside them never push them out. The usual footer doesn't list ⌘R and
   ⌘E, to stay short; the context menu and this file do.
 - While a name or text is edited, every other ⌘ shortcut is taken and
   does nothing (no ⌘1–9 paste, no ⌘P pin), and the keyboard returns to
   the search field afterwards. VoiceOver reads the name in row labels and
-  hears "Renamed to …" and "Edit saved."
+  hears "Renamed to …", "Name removed." and "Edit saved."
 - Snapshots: `selected-named-*`, `rename-*`, `rename-image-*`,
   `edit-text-*`, `edit-code-*`, `edit-rich-text-*`,
   `edit-image-refused-*`.
@@ -381,7 +382,7 @@ pane used.
   Settings. History: "Forget unpinned clips:" with a menu (Never, After a
   day, After a week, After a month) and a one-line note ("Unpinned clips
   stay until your history is full." / "Counted from a clip's last copy or
-  paste. Pins always stay."), applied at once; then "Clear history…" and a
+  paste. Pinned clips stay."), applied at once; then "Clear history…" and a
   one-line summary ("13 clips in your history, 2 of them pinned.").
 - **About** — the 96 pt icon, the name, "Version 0.1.0 (128)", one line of
   what Kept is, the project link, the license, a small "Show welcome
