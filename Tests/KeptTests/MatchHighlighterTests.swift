@@ -55,4 +55,22 @@ struct MatchHighlighterTests {
         let ranges = MatchHighlighter.ranges(of: ["a"], in: text)
         #expect(ranges.count == MatchHighlighter.maxMatchesPerToken)
     }
+
+    @Test("A row starts just before a match it would otherwise truncate")
+    func excerpts() {
+        func excerpt(_ query: String, _ text: String) -> String {
+            MatchHighlighter.excerpt(of: text, tokens: MatchHighlighter.tokens(of: query))
+        }
+        #expect(excerpt("pasteboard", "func write(_ items: [NSPasteboardItem]) -> Int {") == "…[NSPasteboardItem]) -> Int {")
+        #expect(
+            excerpt("notes", "Thanks for the quick turnaround on the onboarding flow. Two small notes before we ship")
+                == "…small notes before we ship"
+        )
+        // Early matches and no matches leave the text alone.
+        #expect(excerpt("ferry", "1 Ferry Building, San Francisco, CA 94111") == "1 Ferry Building, San Francisco, CA 94111")
+        #expect(excerpt("zzz", "nothing here matches the query at all, really") == "nothing here matches the query at all, really")
+        #expect(excerpt("", "nothing here matches the query at all, really") == "nothing here matches the query at all, really")
+        // No word starts nearby: cut mid-word.
+        #expect(excerpt("x", String(repeating: "a", count: 40) + "xaa") == "…aaaaaaaaxaa")
+    }
 }

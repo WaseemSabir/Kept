@@ -5,7 +5,8 @@ import SwiftUI
 /// link as its host and muted path, a color as its swatch, an image as its
 /// thumbnail, files as their icon and name. No kind labels. When selected,
 /// the highlighter goes behind the text only, never over a glyph. While
-/// searching, the words that match are set a weight heavier, in the same ink.
+/// searching, the words that match are set a weight heavier, in the same ink,
+/// and a text row whose first match would be truncated starts just before it.
 struct ClipSummary: View {
     let clip: Clip
     let isMarked: Bool
@@ -16,8 +17,11 @@ struct ClipSummary: View {
     var body: some View {
         switch clip.kind {
         case .text, .richText:
+            // A match deep in the text would be truncated away; start the
+            // line just before it instead.
             let isCode = clip.metadata.looksLikeCode
-            line(emphasized(clip.title, isCode: isCode), isCode: isCode)
+            let text = MatchHighlighter.excerpt(of: clip.title, tokens: matchTokens)
+            line(emphasized(text, isCode: isCode), isCode: isCode)
         case .link:
             let parts = ClipDisplay.linkParts(of: clip.title)
             line(twoTone(parts.host, parts.rest, isCode: false), isCode: false)

@@ -8,6 +8,11 @@ enum MatchHighlighter {
     /// At most this many places are marked per word, so a long title full
     /// of one letter stays cheap to draw.
     static let maxMatchesPerToken = 32
+    /// About how many characters of a title a row shows before it
+    /// truncates: a first match further in would be cut off.
+    static let visiblePrefix = 20
+    /// How much of what comes before the first match an excerpt keeps.
+    static let leadingContext = 8
 
     /// The query's words, split on whitespace.
     static func tokens(of query: String) -> [String] {
@@ -45,6 +50,20 @@ enum MatchHighlighter {
             }
         }
         return result
+    }
+
+    /// `text` from just before its first match, after "…", when that match
+    /// would otherwise fall where the row truncates; otherwise `text`. The
+    /// excerpt starts at a word when one begins shortly before the match.
+    static func excerpt(of text: String, tokens: [String]) -> String {
+        guard let first = ranges(of: tokens, in: text).first,
+              text.distance(from: text.startIndex, to: first.lowerBound) > visiblePrefix
+        else { return text }
+        var start = text.index(first.lowerBound, offsetBy: -leadingContext)
+        if let space = text[start..<first.lowerBound].firstIndex(where: \.isWhitespace) {
+            start = text.index(after: space)
+        }
+        return "…" + text[start...]
     }
 
     /// `text` cut into runs, each saying whether it matched, for drawing.
