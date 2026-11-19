@@ -145,8 +145,9 @@ jobs:
           cat "$log"
 
   # Kept is built with the newest SDK but supports macOS 14+. Launch the app
-  # built above on older releases to catch missing symbols or back-deployment
-  # gaps in the Swift runtime. Non-blocking while runner images come and go.
+  # built above on an older release to catch missing symbols or
+  # back-deployment gaps in the Swift runtime. (GitHub has retired its
+  # macOS 14 image; add it back here if a self-hosted runner provides one.)
   compat:
     name: Launch on ${{ matrix.os }}
     needs: macos
@@ -156,7 +157,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, macos-15]
+        os: [macos-15]
     steps:
       - uses: actions/download-artifact@v7
         with:
