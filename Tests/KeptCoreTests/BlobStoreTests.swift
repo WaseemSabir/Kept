@@ -126,4 +126,50 @@ struct BlobStoreTests {
         #expect(!store.contains("../History.sqlite"))
         try store.remove(missing)  // nothing to remove is fine
     }
+
+    @Test("Leaves reserved blobs alone until the reservation ends")
+    func honoursReservations() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let store = try BlobStore(directory: directory.appendingPathComponent("blobs"))
+        let reserved = try store.write(Data("being recorded".utf8))
+        let free = try store.write(Data("orphan".utf8))
+
+        var reservation: BlobReservations.Reservation? = store.reservations.reserve([reserved])
+        #expect(store.reservations.isReserved(reserved))
+        try store.remove(reserved)
+        #expect(store.contains(reserved))
+        #expect(try store.removeAll(except: []) == 1)
+        #expect(store.contains(reserved))
+        #expect(!store.contains(free))
+
+        // Every copy of the store shares the reservations.
+        let copy = store
+        #expect(copy.reservations.isReserved(reserved))
+
+        reservation?.release()
+        reservation?.release()  // a second release changes nothing
+        #expect(!store.reservations.isReserved(reserved))
+        reservation = store.reservations.reserve([reserved])
+        reservation = nil  // freed: released
+        #expect(!store.reservations.isReserved(reserved))
+        try store.remove(reserved)
+        #expect(!store.contains(reserved))
+    }
+
+    @Test("Counts overlapping reservations of one blob")
+    func overlappingReservations() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { removeTemporaryDirectory(directory) }
+        let store = try BlobStore(directory: directory.appendingPathComponent("blobs"))
+        let hash = try store.write(Data("shared".utf8))
+        let first = store.reservations.reserve([hash])
+        let second = store.reservations.reserve([hash])
+        first.release()
+        try store.remove(hash)
+        #expect(store.contains(hash))
+        second.release()
+        try store.remove(hash)
+        #expect(!store.contains(hash))
+    }
 }

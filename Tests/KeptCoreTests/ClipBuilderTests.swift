@@ -129,6 +129,16 @@ struct ClipBuilderTests {
         #expect(draft.metadata.fileCount == 1)
     }
 
+    @Test("Skips copies with more items than the cap")
+    func capsItems() throws {
+        func files(_ count: Int) -> PasteboardSnapshot {
+            PasteboardSnapshot(items: (0..<count).map { item((.fileURL, "file:///Users/me/\($0).txt")) })
+        }
+        let draft = try #require(builder.build(from: files(CapturePolicy.maxItems)))
+        #expect(draft.metadata.fileCount == CapturePolicy.maxItems)
+        #expect(builder.build(from: files(CapturePolicy.maxItems + 1)) == nil)
+    }
+
     @Test("Builds one file clip from Finder's one-item-per-file pasteboard")
     func buildsMultipleFiles() throws {
         let snapshot = PasteboardSnapshot(items: [

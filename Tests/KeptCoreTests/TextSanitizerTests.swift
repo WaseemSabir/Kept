@@ -108,4 +108,84 @@ struct TextSanitizerTests {
         #expect(!TextSanitizer.hasVisibleContent(" \n\t\u{00A0}\u{200B}\u{FEFF}"))
         #expect(!TextSanitizer.hasVisibleContent(""))
     }
+
+    // MARK: Multi-line
+
+    private func multiline(_ text: String, _ limit: Int = 20_000) -> (text: String, isTruncated: Bool) {
+        TextSanitizer.multiline(text, maxUTF16Count: limit)
+    }
+
+    @Test("Multi-line text keeps spaces, tabs and line breaks, one LF per break")
+    func multilineKeepsLayout() {
+        let code = "func f() {\n\treturn  1\n}\n"
+        #expect(multiline(code) == (code, false))
+        #expect(multiline("a\r\nb\rc\u{2028}d\u{2029}e\u{0B}f\u{0C}g\u{85}h").text == "a\nb\nc\nd\ne\nf\ng\nh")
+        #expect(multiline("a\r\n\r\nb").text == "a\n\nb")
+        #expect(multiline("no\u{00A0}break").text == "no\u{00A0}break")
+    }
+
+    @Test("Multi-line text drops what single lines drop")
+    func multilineDropsInvisibleCharacters() {
+        let text = "a\u{0000}b\u{0007}c\u{200B}d\u{202E}e\u{2066}f\u{FEFF}g\u{FFFF}h\u{001C}i"
+        #expect(multiline(text).text == "abcdefghi")
+        let family = "👨‍👩‍👧"
+        #expect(multiline("\(family)\n🏴󠁧󠁢󠁳󠁣󠁴󠁿 👍🏽").text == "\(family)\n🏴󠁧󠁢󠁳󠁣󠁴󠁿 👍🏽")
+    }
+
+    @Test("Multi-line text cuts a single huge character down to size")
+    func multilineCapsHugeCharacters() {
+        // 100,000 combining marks on one letter: one Character, so a cap on
+        // characters alone would let all of it through.
+        let zalgo = "a" + String(repeating: "\u{0301}", count: 100_000) + "\nb"
+        let result = multiline(zalgo)
+        #expect(result.text.unicodeScalars.count == 1 + TextSanitizer.maxCombiningMarks + 2)
+        #expect(result.text.hasSuffix("\nb"))
+        #expect(!result.isTruncated)
+
+        let joined = "👍" + String(repeating: "\u{200D}👍", count: 10_000)
+        let capped = multiline(joined).text
+        #expect(capped.allSatisfy { $0.unicodeScalars.count <= TextSanitizer.maxScalarsPerCharacter })
+        #expect(capped.unicodeScalars.last != "\u{200D}")
+
+        let tags = "🏴" + String(repeating: "\u{E0061}", count: 50_000)
+        #expect(multiline(tags).text.unicodeScalars.count <= TextSanitizer.maxScalarsPerCharacter)
+    }
+
+    @Test("Multi-line text is cut by UTF-16 length on a character boundary")
+    func multilineCutsByLength() {
+        #expect(multiline("abc", 3) == ("abc", false))
+        #expect(multiline("abcd", 3) == ("abc", true))
+        // Four UTF-16 units per character: the cut never splits one.
+        let thumbs = String(repeating: "👍🏽", count: 20_000)
+        let result = multiline(thumbs, 1001)
+        #expect(result.isTruncated)
+        #expect(result.text.utf16.count == 1000)
+        #expect(result.text.allSatisfy { $0 == "👍🏽" })
+        // A first character longer than the limit is cut between scalars.
+        #expect(multiline("👍🏽", 2) == ("👍", true))
+        #expect(multiline("👍", 1) == ("", true))
+        // Dropped scalars don't count towards the length.
+        #expect(multiline(String(repeating: "\u{200B}", count: 50_000) + "ok", 2) == ("ok", false))
+    }
+
+    @Test("Multi-line text stays fast on long hostile input")
+    func multilineIsQuick() {
+        let hostile = String(repeating: "a" + String(repeating: "\u{200D}\u{1F3FD}\u{E0061}\u{0301}", count: 50), count: 20_000)
+        let elapsed = ContinuousClock().measure {
+            _ = TextSanitizer.multiline(hostile, maxUTF16Count: 20_000)
+            _ = TextSanitizer.multiline(String(repeating: "\u{0301}", count: 1_000_000), maxUTF16Count: 20_000)
+        }
+        #expect(elapsed < .seconds(5))
+    }
+
+    @Test("Counts lines as Character.isNewline does", arguments: [
+        "", "one", "a\nb", "a\r\nb", "a\rb\n", "\u{2028}\u{2029}\u{85}", "\u{0B}\u{0C}", "é\r\n\r\n👍🏽\n",
+        "trailing\n", "\n\n\n", "a\u{0301}\nb",
+    ])
+    func countsLines(text: String) {
+        let expected = text.reduce(into: 1) { count, character in
+            if character.isNewline { count += 1 }
+        }
+        #expect(TextSanitizer.lineCount(of: text) == expected)
+    }
 }

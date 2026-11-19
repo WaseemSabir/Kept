@@ -30,6 +30,11 @@ public final class SharedLoads<Key: Hashable & Sendable, Value: Sendable> {
         loads[key] != nil
     }
 
+    /// Callers waiting on the load for `key` that haven't been cancelled.
+    func waitingCount(for key: Key) -> Int {
+        loads[key]?.waiting ?? 0
+    }
+
     /// What `work` produces for `key`, run in a detached task unless a load
     /// for `key` is already running, in which case its result is shared.
     /// `nil` when `work` returns `nil` or the caller is cancelled.

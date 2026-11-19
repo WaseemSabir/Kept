@@ -119,6 +119,15 @@ struct CapturePolicyTests {
             == .ignore(.remoteClipboard))
     }
 
+    @Test("Reads one image type per item, the cheapest faithful one")
+    func prefersCompactImageTypes() {
+        #expect(PasteboardType.preferredImageType(in: [.string, .tiff, .png]) == .png)
+        #expect(PasteboardType.preferredImageType(in: [.tiff, .jpeg]) == .jpeg)
+        #expect(PasteboardType.preferredImageType(in: [.tiff, .heic]) == .heic)
+        #expect(PasteboardType.preferredImageType(in: [.tiff, .rtf]) == .tiff)
+        #expect(PasteboardType.preferredImageType(in: [.string, .fileURL]) == nil)
+    }
+
     @Test("Defaults the declared types to the items' types")
     func defaultsDeclaredTypes() {
         let snapshot = PasteboardSnapshot(items: [item((.rtf, "{}"), (.string, "a")), item((.string, "b"), (.html, "<b>"))])
