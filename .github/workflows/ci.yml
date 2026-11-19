@@ -66,6 +66,16 @@ jobs:
       - name: Build Kept.app
         run: make app
 
+      # The compat job launches this exact build on older macOS releases.
+      - name: Archive Kept.app
+        run: ditto -c -k --keepParent dist/Kept.app "$RUNNER_TEMP/Kept-app.zip"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: kept-app
+          path: ${{ runner.temp }}/Kept-app.zip
+          retention-days: 7
+
       # The shortcut recorders in Settings load KeyboardShortcuts' strings
       # through Bundle.module, which looks in Contents/Resources inside an app.
       - name: Check bundled resources
@@ -133,6 +143,52 @@ jobs:
           kill "$pid"
           wait "$pid" 2>/dev/null || true
           cat "$log"
+
+  # Kept is built with the newest SDK but supports macOS 14+. Launch the app
+  # built above on older releases to catch missing symbols or back-deployment
+  # gaps in the Swift runtime. Non-blocking while runner images come and go.
+  compat:
+    name: Launch on ${{ matrix.os }}
+    needs: macos
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15]
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: kept-app
+          path: ${{ runner.temp }}
+
+      - name: Launch smoke test
+        run: |
+          sw_vers
+          cd "$RUNNER_TEMP"
+          ditto -x -k Kept-app.zip .
+          codesign --verify --strict Kept.app
+          log="$RUNNER_TEMP/kept.log"
+          OS_ACTIVITY_DT_MODE=YES Kept.app/Contents/MacOS/Kept >"$log" 2>&1 &
+          pid=$!
+          sleep 5
+          if ! kill -0 "$pid" 2>/dev/null; then
+            status=0; wait "$pid" || status=$?
+            echo "::error::Kept exited during launch on $(sw_vers -productVersion) (status $status)"
+            cat "$log"
+            exit 1
+          fi
+          open Kept.app
+          sleep 3
+          if ! kill -0 "$pid" 2>/dev/null; then
+            echo "::error::Kept exited after opening Settings on $(sw_vers -productVersion)"
+            cat "$log"
+            exit 1
+          fi
+          echo "Kept runs on macOS $(sw_vers -productVersion)"
+          kill "$pid"
+          wait "$pid" 2>/dev/null || true
 
   linux:
     name: Linux · KeptCore
