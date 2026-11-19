@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// Kept's icon, name and version, what it is, its license and project page,
-/// and a quiet note if the history had trouble at launch.
+/// the way back to the welcome window, and a quiet note if the history had
+/// trouble at launch.
 struct AboutPane: View {
     let model: SettingsModel
 
@@ -29,6 +30,9 @@ struct AboutPane: View {
             Text("Free and open source under the MIT License.")
                 .font(Theme.SettingsLayout.note)
                 .foregroundStyle(.secondary)
+                .padding(.top, 14)
+            Button("Show welcome window") { model.onShowWelcome() }
+                .controlSize(.small)
                 .padding(.top, 14)
             if let note = model.historyHealthNote {
                 Text(note)

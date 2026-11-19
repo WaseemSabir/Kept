@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// What Kept captures, the apps it never captures from, and clearing the
-/// history.
+/// history. When macOS keeps Kept from reading the clipboard (macOS 15.4+),
+/// that comes first, with where to change it.
 struct PrivacyPane: View {
     let model: SettingsModel
 
@@ -10,6 +11,16 @@ struct PrivacyPane: View {
     var body: some View {
         @Bindable var preferences = model.preferences
         SettingsForm {
+            if let note = model.pasteboardAccessNote {
+                SettingsRow(label: "Clipboard:", labelWidth: Self.labelWidth) {
+                    Text(note.problem)
+                        .fontWeight(.medium)
+                        .fixedSize(horizontal: false, vertical: true)
+                    SettingsNote(text: note.direction)
+                    Button("Open Privacy & Security…") { model.openPasteboardAccessSettings() }
+                }
+            }
+
             SettingsRow(label: "Capture:", labelWidth: Self.labelWidth) {
                 Toggle("Pause capture", isOn: $preferences.isPaused)
                 SettingsNote(text: "Kept saves nothing you copy until you turn this off.", underCheckbox: true)

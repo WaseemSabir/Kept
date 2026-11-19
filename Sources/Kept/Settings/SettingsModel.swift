@@ -1,5 +1,6 @@
 import AppKit
 import KeptCore
+import KeyboardShortcuts
 import Observation
 import UniformTypeIdentifiers
 
@@ -28,8 +29,22 @@ final class SettingsModel {
     private(set) var loginItemStatus: LoginItemStatus
     private(set) var loginItemFailure: LaunchAtLoginState.Failure?
     private(set) var canPostEvents: Bool
+    /// Whether macOS lets Kept read the clipboard (macOS 15.4+).
+    private(set) var pasteboardAccess: PasteboardAccess
+    /// "Show Kept in the menu bar"; ⌘-dragging the icon away turns it off.
+    private(set) var showsMenuBarIcon: Bool
     /// Something that went wrong clearing the history, shown under the button.
     private(set) var historyNotice: String?
+
+    /// Opens the welcome window (About's button).
+    @ObservationIgnored var onShowWelcome: @MainActor () -> Void = {}
+    /// The recorded shortcut for opening Kept, e.g. "⇧⌘V"; `nil` when
+    /// there's none.
+    @ObservationIgnored var openShortcut: @MainActor () -> String? = {
+        KeyboardShortcuts.getShortcut(for: .togglePanel)?.description
+    }
+    /// The macOS major version, for copy that names System Settings panes.
+    @ObservationIgnored var osMajorVersion = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
 
     @ObservationIgnored private let store: HistoryStore?
     @ObservationIgnored private let loginItem: any LoginItemControlling
@@ -37,6 +52,8 @@ final class SettingsModel {
     @ObservationIgnored private let onboarding: PasteOnboarding
     @ObservationIgnored private let dialogs: any SettingsDialogPresenting
     @ObservationIgnored private let icons: IconCache
+    @ObservationIgnored private let pasteboard: any PasteboardAccessChecking
+    @ObservationIgnored private let menuBarIcon: MenuBarIconPreference
 
     init(
         preferences: Preferences,
@@ -47,7 +64,9 @@ final class SettingsModel {
         dialogs: any SettingsDialogPresenting,
         icons: IconCache,
         about: AboutInfo,
-        appIcon: NSImage
+        appIcon: NSImage,
+        pasteboard: any PasteboardAccessChecking = SystemPasteboardAccess(),
+        menuBarIcon: MenuBarIconPreference = MenuBarIconPreference()
     ) {
         self.preferences = preferences
         self.store = store
@@ -58,15 +77,21 @@ final class SettingsModel {
         self.icons = icons
         self.about = about
         self.appIcon = appIcon
+        self.pasteboard = pasteboard
+        self.menuBarIcon = menuBarIcon
         loginItemStatus = loginItem.status
         canPostEvents = permission.canPostEvents
+        pasteboardAccess = pasteboard.access
+        showsMenuBarIcon = menuBarIcon.isShown
     }
 
-    /// Reads the login item and the paste permission again: the user can
-    /// change both in System Settings while Settings is open.
+    /// Reads the login item, the paste permission, clipboard access and the
+    /// menu bar icon again: the user can change them all outside Settings.
     func refresh() {
         loginItemStatus = loginItem.status
         canPostEvents = permission.canPostEvents
+        pasteboardAccess = pasteboard.access
+        showsMenuBarIcon = menuBarIcon.isShown
     }
 
     // MARK: General
@@ -100,6 +125,39 @@ final class SettingsModel {
 
     func openLoginItemsSettings() {
         loginItem.openSystemSettings()
+    }
+
+    /// The "Show Kept in the menu bar" checkbox. The menu bar item follows
+    /// the preference as soon as it changes.
+    var isMenuBarIconShown: Bool {
+        get { showsMenuBarIcon }
+        set {
+            menuBarIcon.isShown = newValue
+            showsMenuBarIcon = newValue
+        }
+    }
+
+    /// Under the checkbox: how to get back to Kept without the icon.
+    var menuBarIconNote: String {
+        let reopen = "Opening Kept again from Applications brings the icon back."
+        guard let shortcut = openShortcut() else {
+            return "Without the icon, open Kept from Applications. \(reopen)"
+        }
+        return "Without the icon, \(shortcut) still opens Kept. \(reopen)"
+    }
+
+    // MARK: Clipboard access
+
+    /// What's wrong with clipboard access and where to fix it, or `nil`.
+    var pasteboardAccessNote: (problem: String, direction: String)? {
+        guard let problem = pasteboardAccess.problem,
+              let direction = pasteboardAccess.direction(osMajorVersion: osMajorVersion)
+        else { return nil }
+        return (problem, direction)
+    }
+
+    func openPasteboardAccessSettings() {
+        pasteboard.openSettings()
     }
 
     var pasteStatus: PasteStatus {

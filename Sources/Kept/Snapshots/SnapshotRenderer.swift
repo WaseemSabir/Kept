@@ -46,6 +46,8 @@ enum SnapshotRenderer {
         var history: History = .sample
         var isPaused = false
         var options = PasteOptions()
+        /// Drawn with the Increase Contrast appearance.
+        var increasedContrast = false
         var configure: @MainActor (PanelViewModel) -> Void = { _ in }
     }
 
@@ -77,6 +79,7 @@ enum SnapshotRenderer {
         Scene(name: "empty", history: .empty),
         Scene(name: "always-plain-text", options: PasteOptions(alwaysPastePlainText: true)),
         Scene(name: "copy-only-mode", options: PasteOptions(pasteDirectly: false)),
+        Scene(name: "search-increased-contrast", increasedContrast: true) { $0.query = "pasteboard" },
     ]
 
     private static let hintScenes: [HintScene] = [
@@ -101,6 +104,11 @@ enum SnapshotRenderer {
 
         var colorScheme: ColorScheme {
             self == .light ? .light : .dark
+        }
+
+        /// The same with Increase Contrast on.
+        var highContrastAppearance: NSAppearance? {
+            NSAppearance(named: self == .light ? .accessibilityHighContrastAqua : .accessibilityHighContrastDarkAqua)
         }
     }
 
@@ -135,7 +143,12 @@ enum SnapshotRenderer {
                 let view = PanelView(model: model, resources: scene.history == .sample ? sampleResources : emptyResources)
                     .frame(width: size.width, height: size.height)
                     .background(Theme.Colors.panelBackground)
-                let png = try await renderInWindow(view, size: size, appearance: appearance) {
+                let png = try await renderInWindow(
+                    view,
+                    size: size,
+                    appearance: appearance,
+                    increasedContrast: scene.increasedContrast
+                ) {
                     // After the search field has taken focus, as if typed.
                     scene.configure(model)
                 }
@@ -176,6 +189,7 @@ enum SnapshotRenderer {
         _ view: some View,
         size fixedSize: CGSize?,
         appearance: Appearance,
+        increasedContrast: Bool = false,
         prepare: () -> Void
     ) async throws -> Data {
         let root = view.environment(\.colorScheme, appearance.colorScheme)
@@ -193,7 +207,7 @@ enum SnapshotRenderer {
             defer: false
         )
         window.isReleasedWhenClosed = false
-        window.appearance = appearance.nsAppearance
+        window.appearance = increasedContrast ? appearance.highContrastAppearance : appearance.nsAppearance
         window.contentView = hostingView
         defer { window.close() }
 

@@ -19,6 +19,8 @@ struct SettingsModelTests {
         let loginItem: FakeLoginItem
         let permission: FakePermission
         let dialogs: FakeDialogs
+        let pasteboard: FakePasteboardAccess
+        let menuBarIcon: MenuBarIconPreference
         let model: SettingsModel
 
         init(texts: [String] = ["one", "two", "three"]) throws {
@@ -31,6 +33,8 @@ struct SettingsModelTests {
             let loginItem = FakeLoginItem()
             let permission = FakePermission()
             let dialogs = FakeDialogs()
+            let pasteboard = FakePasteboardAccess()
+            let menuBarIcon = MenuBarIconPreference(defaults: defaults)
             self.directory = directory
             self.suiteName = suiteName
             self.preferences = preferences
@@ -39,6 +43,8 @@ struct SettingsModelTests {
             self.loginItem = loginItem
             self.permission = permission
             self.dialogs = dialogs
+            self.pasteboard = pasteboard
+            self.menuBarIcon = menuBarIcon
             model = SettingsModel(
                 preferences: preferences,
                 store: store,
@@ -48,7 +54,9 @@ struct SettingsModelTests {
                 dialogs: dialogs,
                 icons: IconCache(),
                 about: AboutInfo(version: "1.2.3", build: "45"),
-                appIcon: NSImage()
+                appIcon: NSImage(),
+                pasteboard: pasteboard,
+                menuBarIcon: menuBarIcon
             )
         }
 
@@ -236,7 +244,7 @@ struct SettingsModelTests {
         #expect(!model.canRestoreDefaultExcludedApps)
     }
 
-    @Test("Rows name apps that aren't installed by their bundle ID")
+    @Test("Rows name missing password managers by name, and other missing apps by bundle ID")
     func excludedAppRows() {
         let missing = ExcludedApp(bundleID: "com.example.Gone", name: nil)
         #expect(missing.title == "com.example.Gone")
@@ -244,6 +252,84 @@ struct SettingsModelTests {
         let present = ExcludedApp(bundleID: "com.apple.Passwords", name: "Passwords")
         #expect(present.title == "Passwords")
         #expect(present.isInstalled)
+
+        let known = [
+            "com.1password.1password": "1Password",
+            "com.agilebits.onepassword7": "1Password 7",
+            "com.bitwarden.desktop": "Bitwarden",
+            "org.keepassxc.keepassxc": "KeePassXC",
+            "com.apple.Passwords": "Passwords",
+            "com.apple.keychainaccess": "Keychain Access",
+        ]
+        for (bundleID, name) in known {
+            let row = ExcludedApp(bundleID: bundleID, name: nil)
+            #expect(row.title == name)
+            #expect(!row.isInstalled)
+        }
+        // Every default has a name, and case doesn't matter.
+        for bundleID in PreferenceDefaults.excludedBundleIDs {
+            #expect(ExcludedApp.knownName(for: bundleID) != nil, "\(bundleID)")
+        }
+        #expect(ExcludedApp.knownName(for: "ORG.KEEPASSXC.KEEPASSXC") == "KeePassXC")
+        // The installed app's own name wins.
+        #expect(ExcludedApp(bundleID: "com.1password.1password", name: "1Password 8").title == "1Password 8")
+    }
+
+    // MARK: Menu bar icon
+
+    @Test("The menu bar checkbox writes the preference the menu bar item follows")
+    func menuBarIcon() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        let model = harness.model
+        #expect(model.isMenuBarIconShown)
+        #expect(harness.menuBarIcon.isShown)
+
+        model.isMenuBarIconShown = false
+        #expect(!harness.menuBarIcon.isShown)
+        #expect(!model.isMenuBarIconShown)
+
+        // ⌘-dragging the icon away (or opening Kept again) shows up on refresh.
+        harness.menuBarIcon.isShown = true
+        #expect(!model.isMenuBarIconShown)
+        model.refresh()
+        #expect(model.isMenuBarIconShown)
+    }
+
+    @Test("The menu bar note names the recorded shortcut, if any")
+    func menuBarIconNote() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        let model = harness.model
+        model.openShortcut = { "⌃⌘V" }
+        #expect(model.menuBarIconNote == "Without the icon, ⌃⌘V still opens Kept. Opening Kept again from Applications brings the icon back.")
+        model.openShortcut = { nil }
+        #expect(model.menuBarIconNote == "Without the icon, open Kept from Applications. Opening Kept again from Applications brings the icon back.")
+    }
+
+    // MARK: Clipboard access
+
+    @Test("Clipboard access trouble shows with where to fix it, and refreshes")
+    func pasteboardAccess() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        let model = harness.model
+        model.osMajorVersion = 26
+        #expect(model.pasteboardAccessNote == nil)
+
+        harness.pasteboard.access = .denied
+        #expect(model.pasteboardAccessNote == nil)
+        model.refresh()
+        let note = try #require(model.pasteboardAccessNote)
+        #expect(note.problem == "Kept can't see what you copy until you allow it.")
+        #expect(note.direction.contains("Paste from Other Apps"))
+
+        model.openPasteboardAccessSettings()
+        #expect(harness.pasteboard.settingsOpened == 1)
+
+        harness.pasteboard.access = .allowed
+        model.refresh()
+        #expect(model.pasteboardAccessNote == nil)
     }
 
     // MARK: Clearing the history
@@ -376,6 +462,14 @@ private final class FakePermission: PermissionChecking {
     private(set) var settingsOpened = 0
 
     func requestAccess() { requests += 1 }
+    func openSettings() { settingsOpened += 1 }
+}
+
+@MainActor
+final class FakePasteboardAccess: PasteboardAccessChecking {
+    var access = PasteboardAccess.allowed
+    private(set) var settingsOpened = 0
+
     func openSettings() { settingsOpened += 1 }
 }
 

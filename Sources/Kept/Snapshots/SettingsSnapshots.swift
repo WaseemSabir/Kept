@@ -3,9 +3,10 @@ import KeptCore
 import SwiftUI
 
 /// The Settings panes for `SnapshotRenderer`: each pane on its own, light
-/// and dark, plus the whole window (title bar and toolbar) on General, in
-/// light mode only: offscreen, the selected toolbar item's glass draws as a
-/// white block in dark mode, which isn't what users see.
+/// and dark, the welcome window's content, plus the whole Settings window
+/// (title bar and toolbar) on General, in light mode only: offscreen, the
+/// selected toolbar item's glass draws as a white block in dark mode, which
+/// isn't what users see.
 ///
 /// Settings read a throwaway preferences domain, the sample history and
 /// stand-ins for the login item, the paste permission and the dialogs, so
@@ -17,6 +18,7 @@ enum SettingsSnapshots {
         let pane: SettingsPane
         var loginStatus = LoginItemStatus.notRegistered
         var canPostEvents = true
+        var pasteboardAccess = PasteboardAccess.allowed
         var configure: @MainActor (Preferences) -> Void = { _ in }
     }
 
@@ -27,7 +29,15 @@ enum SettingsSnapshots {
         Scene(name: "settings-privacy", pane: .privacy) { preferences in
             preferences.excludeApp("com.apple.TextEdit")
         },
+        Scene(name: "settings-privacy-clipboard-access", pane: .privacy, pasteboardAccess: .asks),
         Scene(name: "settings-about", pane: .about),
+    ]
+
+    /// The welcome window, as at a first launch, and with clipboard access
+    /// denied (macOS 15.4+).
+    private static let welcomeScenes: [Scene] = [
+        Scene(name: "welcome", pane: .general),
+        Scene(name: "welcome-clipboard-denied", pane: .general, pasteboardAccess: .denied),
     ]
 
     /// Renders every scene into `directory`; returns how many files it wrote.
@@ -37,6 +47,18 @@ enum SettingsSnapshots {
             for appearance in SnapshotRenderer.Appearance.allCases {
                 let png = try await withSettings(scene, store: store, icons: icons) { model, _ in
                     let view = SettingsPaneView(pane: scene.pane, model: model)
+                        .background(Color(nsColor: .windowBackgroundColor))
+                    return try await SnapshotRenderer.renderInWindow(view, size: nil, appearance: appearance) {}
+                }
+                try png.write(to: directory.appendingPathComponent("\(scene.name)-\(appearance.rawValue).png"))
+                written += 1
+            }
+        }
+
+        for scene in welcomeScenes {
+            for appearance in SnapshotRenderer.Appearance.allCases {
+                let png = try await withSettings(scene, store: store, icons: icons) { model, _ in
+                    let view = WelcomeView(settings: model, shortcut: "⇧⌘V")
                         .background(Color(nsColor: .windowBackgroundColor))
                     return try await SnapshotRenderer.renderInWindow(view, size: nil, appearance: appearance) {}
                 }
@@ -87,8 +109,13 @@ enum SettingsSnapshots {
             dialogs: NoDialogs(),
             icons: icons,
             about: AboutInfo(version: repositoryVersion ?? "0.1.0", build: "128"),
-            appIcon: repositoryIcon ?? NSApplication.shared.applicationIconImage ?? NSImage()
+            appIcon: repositoryIcon ?? NSApplication.shared.applicationIconImage ?? NSImage(),
+            pasteboard: StaticPasteboardAccess(access: scene.pasteboardAccess),
+            menuBarIcon: MenuBarIconPreference(defaults: defaults)
         )
+        // The default shortcut, whatever this machine has recorded.
+        model.openShortcut = { "⇧⌘V" }
+        model.osMajorVersion = 26
         return try await body(model, defaults)
     }
 
@@ -105,7 +132,11 @@ enum SettingsSnapshots {
         window.appearance = appearance.nsAppearance
         window.alphaValue = 0
         window.orderFrontRegardless()
-        defer { window.close() }
+        defer {
+            // Not a real close: nothing to hand focus back to.
+            window.delegate = nil
+            window.close()
+        }
 
         try await Task.sleep(for: .milliseconds(400))
         controller.prepareWindow(pane: .general)
@@ -160,6 +191,17 @@ private final class StaticPermission: PermissionChecking {
     }
 
     func requestAccess() {}
+    func openSettings() {}
+}
+
+@MainActor
+private final class StaticPasteboardAccess: PasteboardAccessChecking {
+    let access: PasteboardAccess
+
+    init(access: PasteboardAccess) {
+        self.access = access
+    }
+
     func openSettings() {}
 }
 

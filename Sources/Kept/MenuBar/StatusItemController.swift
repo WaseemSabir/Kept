@@ -7,29 +7,40 @@ import KeyboardShortcuts
 /// The menu is attached only while it opens (`performClick`, not replaying
 /// the mouse event, which stopped working on macOS 27): with a menu
 /// attached, every click would open the menu instead of the panel.
+///
+/// The icon can be ⌘-dragged out of the menu bar. That and the Settings
+/// checkbox meet in `MenuBarIconPreference`, which the item follows both
+/// ways, so the icon can always be brought back.
 @MainActor
 final class StatusItemController: NSObject, NSMenuDelegate {
     private let statusItem: NSStatusItem
     private let statusMenu: StatusMenu
     private let togglePanel: @MainActor () -> Void
     private let menuState: @MainActor () -> StatusMenuState
+    private let iconPreference: MenuBarIconPreference
+    private var visibilityObservation: NSKeyValueObservation?
+    private var defaultsObserver: (any NSObjectProtocol)?
 
     /// - Parameters:
     ///   - togglePanel: a plain click.
     ///   - menuActions: what the menu's items do.
     ///   - menuState: read each time the menu opens.
+    ///   - iconPreference: whether the icon shows.
     init(
         togglePanel: @escaping @MainActor () -> Void,
         menuActions: StatusMenu.Actions,
-        menuState: @escaping @MainActor () -> StatusMenuState
+        menuState: @escaping @MainActor () -> StatusMenuState,
+        iconPreference: MenuBarIconPreference = MenuBarIconPreference()
     ) {
         self.togglePanel = togglePanel
         self.menuState = menuState
+        self.iconPreference = iconPreference
         statusMenu = StatusMenu(actions: menuActions)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
         statusMenu.menu.delegate = self
         configureButton()
+        followIconPreference()
     }
 
     /// The icon's frame on screen, for placing the panel below it; `nil`
@@ -62,17 +73,53 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
-        if Self.wantsMenu(NSApplication.shared.currentEvent) {
+        let event = NSApplication.shared.currentEvent
+        if Self.wantsMenu(event?.type, modifiers: event?.modifierFlags ?? []) {
             showMenu()
         } else {
             togglePanel()
         }
     }
 
-    private static func wantsMenu(_ event: NSEvent?) -> Bool {
-        guard let event else { return false }
-        return event.type == .rightMouseUp
-            || !event.modifierFlags.isDisjoint(with: [.control, .option])
+    /// A right click, or a click with ⌃ or ⌥ held, opens the menu; any
+    /// other click (⌘ and ⇧ included) toggles the panel.
+    static func wantsMenu(_ eventType: NSEvent.EventType?, modifiers: NSEvent.ModifierFlags) -> Bool {
+        guard let eventType else { return false }
+        return eventType == .rightMouseUp
+            || !modifiers.isDisjoint(with: [.control, .option])
+    }
+
+    // MARK: Showing the icon
+
+    /// Applies the preference now and keeps the two in step: ⌘-dragging the
+    /// icon away turns the preference off, and the Settings checkbox (or
+    /// opening Kept again) shows or hides the icon.
+    private func followIconPreference() {
+        applyIconPreference()
+        visibilityObservation = statusItem.observe(\.isVisible) { [weak self] _, _ in
+            MainActor.assumeIsolated {
+                self?.iconVisibilityDidChange()
+            }
+        }
+        defaultsObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: iconPreference.defaults,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.applyIconPreference()
+            }
+        }
+    }
+
+    private func applyIconPreference() {
+        let isShown = iconPreference.isShown
+        if statusItem.isVisible != isShown { statusItem.isVisible = isShown }
+    }
+
+    private func iconVisibilityDidChange() {
+        let isVisible = statusItem.isVisible
+        if iconPreference.isShown != isVisible { iconPreference.isShown = isVisible }
     }
 
     private func showMenu() {

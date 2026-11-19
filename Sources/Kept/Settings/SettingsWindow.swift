@@ -1,7 +1,7 @@
 import AppKit
 
-/// The Settings window. Kept is an agent app without a main menu, so the
-/// window handles ⌘W and ⌘Q itself. (A shortcut recorder that's recording
+/// The Settings window (and the welcome window). Kept is an agent app
+/// without a main menu, so the window handles ⌘W and ⌘Q itself. (A shortcut recorder that's recording
 /// sees keys first, so ⌘W can still be recorded.)
 final class SettingsWindow: NSWindow {
     override func performKeyEquivalent(with event: NSEvent) -> Bool {

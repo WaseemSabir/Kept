@@ -181,6 +181,16 @@ enum Theme {
         static let aboutName = Font.system(size: 20, weight: .semibold)
     }
 
+    /// The welcome window: centered, alert-like, one column.
+    @MainActor
+    enum WelcomeLayout {
+        static let width: CGFloat = 380
+        static let padding: CGFloat = 24
+        static let iconSize: CGFloat = 72
+        static let title = Font.system(size: 17, weight: .semibold)
+        static let buttonWidth: CGFloat = 96
+    }
+
     /// Only the panel and the copy-only hint fade, and not under Reduce
     /// Motion.
     @MainActor

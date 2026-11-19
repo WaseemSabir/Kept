@@ -1,7 +1,8 @@
 import KeptCore
 import SwiftUI
 
-/// Startup, history size, how pasting works, and where the panel opens.
+/// Startup, the menu bar icon, history size, how pasting works, and where
+/// the panel opens.
 struct GeneralPane: View {
     let model: SettingsModel
 
@@ -21,6 +22,11 @@ struct GeneralPane: View {
                     Button("Open Login Items…") { model.openLoginItemsSettings() }
                         .padding(.leading, Theme.SettingsLayout.checkboxIndent)
                 }
+            }
+
+            SettingsRow(label: "Menu bar:", labelWidth: Self.labelWidth) {
+                Toggle("Show Kept in the menu bar", isOn: $model.isMenuBarIconShown)
+                SettingsNote(text: model.menuBarIconNote, underCheckbox: true)
             }
 
             SettingsRow(label: "History size:", labelWidth: Self.labelWidth) {

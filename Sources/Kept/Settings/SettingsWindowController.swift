@@ -4,26 +4,33 @@ import AppKit
 /// whose toolbar switches panes.
 ///
 /// Showing it activates Kept, since Settings takes the keyboard like any
-/// window. Closing it hands focus back to the app that was active before,
-/// so Kept never lingers as an invisible active app.
+/// window. Closing it hands the keyboard back to the app the user was in
+/// last (`ActiveAppTracker`), or hides Kept when there's none, so Kept never
+/// lingers as an invisible active app.
 @MainActor
 final class SettingsWindowController: NSObject, NSWindowDelegate {
     /// The last pane shown, in UserDefaults. `-settingsPane shortcuts` on
     /// the command line opens a given pane (CI's smoke test uses it).
     static let selectedPaneKey = "settingsPane"
 
-    private let model: SettingsModel
+    let model: SettingsModel
+    /// Shared with the welcome window, which hands focus back the same way.
+    let activeApps: ActiveAppTracker
     private let dialogs: SettingsDialogs
     private let defaults: UserDefaults
     private var window: SettingsWindow?
     private var tabController: SettingsTabViewController?
-    /// The app that was active before Settings opened.
-    private var previousApp: NSRunningApplication?
 
-    init(model: SettingsModel, dialogs: SettingsDialogs, defaults: UserDefaults = .standard) {
+    init(
+        model: SettingsModel,
+        dialogs: SettingsDialogs,
+        defaults: UserDefaults = .standard,
+        activeApps: ActiveAppTracker = ActiveAppTracker()
+    ) {
         self.model = model
         self.dialogs = dialogs
         self.defaults = defaults
+        self.activeApps = activeApps
         super.init()
     }
 
@@ -31,7 +38,6 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     /// Shows Settings (on `pane`, or the last pane shown) and activates Kept.
     func show(pane: SettingsPane? = nil) {
-        rememberPreviousApp()
         let window = prepareWindow(pane: pane)
         model.refresh()
         NSApplication.shared.activate()
@@ -78,16 +84,6 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         return window
     }
 
-    /// Notes the app the user was in, unless Kept is already active (then
-    /// the earlier note stands).
-    private func rememberPreviousApp() {
-        guard !NSApplication.shared.isActive,
-              let app = NSWorkspace.shared.frontmostApplication,
-              app.processIdentifier != ProcessInfo.processInfo.processIdentifier
-        else { return }
-        previousApp = app
-    }
-
     // MARK: NSWindowDelegate
 
     func windowDidBecomeKey(_ notification: Notification) {
@@ -97,10 +93,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
-        let previousApp = previousApp
-        self.previousApp = nil
-        guard NSApplication.shared.isActive, let previousApp, !previousApp.isTerminated else { return }
-        NSApplication.shared.yieldActivation(to: previousApp)
-        _ = previousApp.activate(options: [])
+        guard let window = notification.object as? NSWindow else { return }
+        activeApps.returnFocus(closing: window)
     }
 }
