@@ -49,6 +49,15 @@ public struct ClipBuilder: Sendable {
         return draft
     }
 
+    /// The draft for text typed into Kept (an edited clip): one item
+    /// holding the text as a plain string, described the way a copy of it
+    /// would be, whatever its size. `nil` when the text has nothing visible.
+    public static func draft(forEditedText text: String) -> ClipDraft? {
+        let builder = ClipBuilder(settings: CaptureSettings(maxItemBytes: .max))
+        let item = PasteboardItem([ClipRepresentation(.string, string: text)])
+        return builder.build(from: PasteboardSnapshot(items: [item]))
+    }
+
     // MARK: Filtering
 
     /// Each item's supported representations (first of each type, in order),

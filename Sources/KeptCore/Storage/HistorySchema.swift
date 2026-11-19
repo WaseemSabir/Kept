@@ -36,6 +36,10 @@ enum HistorySchema {
         );
         CREATE INDEX representations_by_blob ON representations (blob_hash) WHERE blob_hash IS NOT NULL;
         """,
+        // 2: a name the user gives a clip; NULL shows the generated title.
+        """
+        ALTER TABLE clips ADD COLUMN custom_title TEXT;
+        """,
     ]
 
     static var currentVersion: Int { migrations.count }

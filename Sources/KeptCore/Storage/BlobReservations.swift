@@ -9,6 +9,13 @@ import Foundation
 /// then writes it again), or the reservation comes first and the file stays.
 /// Orphans left by a capture that's never recorded are swept at the next
 /// launch, or as soon as `HistoryStore.discard(_:)` lets them go.
+///
+/// Blobs deleted later, off the main actor (`BlobStore.removeInBackground`),
+/// are marked first; reserving a hash takes its mark away, so a clip that
+/// starts using the blob again before its turn comes keeps the file. Every
+/// write that a clip will reference reserves its hash first, so a blob
+/// marked while unreferenced can only be referenced again through a
+/// reservation.
 final class BlobReservations: @unchecked Sendable {
     /// Keeps a set of hashes reserved until `release()` or until it's freed.
     final class Reservation: @unchecked Sendable {
@@ -45,6 +52,9 @@ final class BlobReservations: @unchecked Sendable {
     private let lock = NSLock()
     /// How many reservations hold each hash.
     private var counts: [String: Int] = [:]
+    /// Hashes waiting to be deleted off the main actor; a reservation
+    /// takes a hash off.
+    private var pendingRemovals: Set<String> = []
 
     /// Reserves `hashes` until the returned reservation is released.
     func reserve(_ hashes: Set<String>) -> Reservation {
@@ -53,7 +63,35 @@ final class BlobReservations: @unchecked Sendable {
         for hash in hashes {
             counts[hash, default: 0] += 1
         }
+        pendingRemovals.subtract(hashes)
         return Reservation(hashes: hashes, owner: self)
+    }
+
+    /// Marks `hashes` for a later `removeIfStillPending(_:_:)`, except the
+    /// reserved ones.
+    func markForRemoval(_ hashes: Set<String>) {
+        lock.lock()
+        defer { lock.unlock() }
+        pendingRemovals.formUnion(hashes.filter { counts[$0] == nil })
+    }
+
+    /// Runs `body` (which deletes the file for `hash`) if `hash` is still
+    /// marked for removal and not reserved, holding the lock throughout,
+    /// and takes the mark off either way. Returns whether it ran.
+    @discardableResult
+    func removeIfStillPending<Failure: Error>(_ hash: String, _ body: () throws(Failure) -> Void) throws(Failure) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard pendingRemovals.remove(hash) != nil, counts[hash] == nil else { return false }
+        try body()
+        return true
+    }
+
+    /// Whether `hash` is waiting to be deleted (for tests).
+    func isPendingRemoval(_ hash: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return pendingRemovals.contains(hash)
     }
 
     func isReserved(_ hash: String) -> Bool {

@@ -183,7 +183,8 @@ public final class HistoryStore {
     /// Adds a captured clip, or, when the same content is already kept,
     /// moves that clip to the top: `lastCopiedAt` becomes `date`,
     /// `copyCount` goes up by one, and the representations, kind, title and
-    /// source are refreshed. Pins stay pinned. Prunes past the limit.
+    /// source are refreshed. Pins stay pinned and custom titles stay. Prunes
+    /// past the limit.
     ///
     /// Writes large payloads to blob files here, on the main actor; capture
     /// stages them off it first and records the `StagedClip` instead.
@@ -215,6 +216,7 @@ public final class HistoryStore {
                 id: existing?.id ?? UUID(),
                 kind: draft.kind,
                 title: draft.title,
+                customTitle: existing?.customTitle,
                 searchText: draft.searchText,
                 contentHash: draft.contentHash,
                 sourceBundleID: draft.sourceBundleID ?? existing?.sourceBundleID,
@@ -232,13 +234,7 @@ public final class HistoryStore {
             var replacedBlobs = try existing.map { try blobHashes(of: [$0.id]) } ?? []
             // A row with the same content that wasn't loaded (unreadable, or
             // from a newer Kept) gives way to the new copy.
-            replacedBlobs.formUnion(try blobHashes(
-                query: """
-                    SELECT r.blob_hash FROM representations r JOIN clips c ON c.id = r.clip_id
-                    WHERE c.content_hash = ? AND c.id <> ? AND r.blob_hash IS NOT NULL
-                    """,
-                .text(clip.contentHash), .text(clip.id.uuidString)
-            ))
+            replacedBlobs.formUnion(try blobHashesOfOtherClips(withContentHash: clip.contentHash, than: clip.id))
             try transaction {
                 try database.run(
                     "DELETE FROM clips WHERE content_hash = ? AND id <> ?",
@@ -273,6 +269,129 @@ public final class HistoryStore {
                 .real(date.timeIntervalSinceReferenceDate), .text(id.uuidString)
             )
             place(clip)
+        }
+    }
+
+    // MARK: Renaming and editing
+
+    /// Gives a clip a name that the list shows instead of its text. The
+    /// name is sanitized like a title (one line, invisible characters
+    /// dropped) and cut to `Clip.maxCustomTitleCharacters`; `nil`, a blank
+    /// name, or the clip's own generated title clears it. The clip stays
+    /// where it is. Returns the renamed clip.
+    @discardableResult
+    public func rename(_ id: UUID, to title: String?) throws(HistoryStoreError) -> Clip {
+        guard let clip = clip(withID: id) else { throw .clipNotFound(id) }
+        var customTitle = Clip.sanitizedCustomTitle(title)
+        if customTitle == clip.title { customTitle = nil }
+        guard customTitle != clip.customTitle else { return clip }
+        let renamed = clip.withCustomTitle(customTitle)
+        try mapErrors {
+            try database.run(
+                "UPDATE clips SET custom_title = ? WHERE id = ?",
+                .optional(customTitle), .text(id.uuidString)
+            )
+        }
+        update(renamed)
+        return renamed
+    }
+
+    /// Replaces a text-like clip's content (text, rich text, a link or a
+    /// color) with `text` as plain text: its representations become one
+    /// plain string, and its kind (text can become a link or a color, and
+    /// back), title, search text, metadata and content hash are worked out
+    /// again as for a copy. It keeps its ID, pin, custom title, copy count,
+    /// source and dates, so it stays where it is.
+    ///
+    /// If another clip already holds the new content, the two merge into
+    /// the edited one: it takes the other's pin when it has none (its place
+    /// among the pins), its custom title when it has none, its copies
+    /// (copy counts add up), the earlier first copy and the later last
+    /// copy; the other clip is deleted.
+    ///
+    /// The old content is remembered as deleted at `date`
+    /// (`wasDeleted(_:after:)`), so a copy of it seen before the edit and
+    /// recorded after can't bring it back as a clip of its own; a copy made
+    /// after the edit is recorded as usual. `clearGeneration` doesn't move,
+    /// so other captures in flight still land.
+    ///
+    /// Throws `.notEditable` for images and files, and `.emptyText` when
+    /// `text` has nothing visible.
+    @discardableResult
+    public func editText(_ id: UUID, to text: String, at date: Date = Date()) throws(HistoryStoreError) -> Clip {
+        guard let original = clip(withID: id) else { throw .clipNotFound(id) }
+        guard original.kind.isTextLike else { throw .notEditable(id) }
+        guard let draft = ClipBuilder.draft(forEditedText: text) else { throw .emptyText }
+        // Reserved like a capture's, so no deletion, now or in the
+        // background, removes a blob file the edit is about to use.
+        let staged: StagedClip
+        do throws(ClipStager.Failure) {
+            staged = try stager.stage(draft)
+        } catch {
+            discard(error.written)
+            throw error.error
+        }
+        defer { discard(staged) }
+
+        return try mapErrors {
+            let duplicate = (pinned + recent).first { $0.contentHash == draft.contentHash && $0.id != id }
+            let edited = Clip(
+                id: id,
+                kind: draft.kind,
+                title: draft.title,
+                customTitle: original.customTitle ?? duplicate?.customTitle,
+                searchText: draft.searchText,
+                contentHash: draft.contentHash,
+                sourceBundleID: original.sourceBundleID,
+                firstCopiedAt: min(original.firstCopiedAt, duplicate?.firstCopiedAt ?? original.firstCopiedAt),
+                lastCopiedAt: max(original.lastCopiedAt, duplicate?.lastCopiedAt ?? original.lastCopiedAt),
+                copyCount: original.copyCount + (duplicate?.copyCount ?? 0),
+                pinOrder: original.pinOrder ?? duplicate?.pinOrder,
+                byteSize: draft.byteSize,
+                metadata: draft.metadata
+            )
+
+            // The pins afterwards: the edited clip in its own place, or in
+            // the duplicate's when only that one was pinned.
+            var pins = pinned
+            if let duplicate, let index = pins.firstIndex(where: { $0.id == duplicate.id }) {
+                if original.isPinned {
+                    pins.remove(at: index)
+                } else {
+                    pins[index] = edited
+                }
+            }
+            if let index = pins.firstIndex(where: { $0.id == id }) { pins[index] = edited }
+
+            let representations = try storeRepresentations(of: staged.draft.items, staged: staged.blobHashes)
+            var replacedBlobs = try blobHashes(of: [id] + (duplicate.map { [$0.id] } ?? []))
+            replacedBlobs.formUnion(try blobHashesOfOtherClips(withContentHash: edited.contentHash, than: id))
+            try transaction {
+                // The duplicate, and any unreadable row with the same content.
+                try database.run(
+                    "DELETE FROM clips WHERE content_hash = ? AND id <> ?",
+                    .text(edited.contentHash), .text(id.uuidString)
+                )
+                try upsert(edited)
+                try database.run("DELETE FROM representations WHERE clip_id = ?", .text(id.uuidString))
+                try insert(representations, for: id)
+                try writePinOrder(&pins)
+            }
+
+            if let duplicate { recent.removeAll { $0.id == duplicate.id } }
+            if pins != pinned { pinned = pins }
+            let result = pins.first { $0.id == id } ?? edited
+            if result.isPinned {
+                recent.removeAll { $0.id == id }
+            } else {
+                update(result)
+            }
+            if original.contentHash != result.contentHash {
+                noteDeletion(of: original.contentHash, at: date)
+            }
+            // Committed; a file left behind is swept at the next launch.
+            try? removeBlobsIfUnreferenced(replacedBlobs)
+            return result
         }
     }
 
@@ -383,6 +502,26 @@ public final class HistoryStore {
         }
     }
 
+    /// Deletes every unpinned clip last copied or pasted before `cutoff`
+    /// ("Forget unpinned clips"); pins always stay. Returns how many went.
+    ///
+    /// The rows go at once; their blob files that nothing else uses are
+    /// deleted on a background queue, so forgetting a big history doesn't
+    /// hold up the main actor. Forgotten content isn't remembered as
+    /// deleted: copying it again records it as usual.
+    @discardableResult
+    public func forgetUnpinned(olderThan cutoff: Date) throws(HistoryStoreError) -> Int {
+        let victims = Set(recent.lazy.filter { $0.lastCopiedAt < cutoff }.map(\.id))
+        guard !victims.isEmpty else { return 0 }
+        try mapErrors { try deleteClips(victims, removingBlobs: .inBackground) }
+        return victims.count
+    }
+
+    /// Returns once the blob files of forgotten clips are deleted (for tests).
+    func waitForBackgroundRemovals() {
+        blobs.waitForBackgroundRemovals()
+    }
+
     /// Changes how many unpinned clips are kept (at least one) and prunes
     /// the oldest beyond it.
     public func setHistoryLimit(_ limit: Int) throws(HistoryStoreError) {
@@ -409,6 +548,20 @@ public final class HistoryStore {
         self.recent = recent
     }
 
+    /// Puts a changed `clip` where its older copy was when it hasn't moved
+    /// (same pin, same last copy), so clips copied at the same moment keep
+    /// their order; otherwise `place(_:)`.
+    private func update(_ clip: Clip) {
+        if let index = pinned.firstIndex(where: { $0.id == clip.id }), pinned[index].pinOrder == clip.pinOrder {
+            pinned[index] = clip
+        } else if let index = recent.firstIndex(where: { $0.id == clip.id }),
+                  !clip.isPinned, recent[index].lastCopiedAt == clip.lastCopiedAt {
+            recent[index] = clip
+        } else {
+            place(clip)
+        }
+    }
+
     /// Deletes the oldest unpinned clips beyond the limit, never `keptID`.
     private func prune(keeping keptID: UUID? = nil) throws {
         let excess = recent.count - historyLimit
@@ -417,7 +570,15 @@ public final class HistoryStore {
         try deleteClips(Set(victims))
     }
 
-    private func deleteClips(_ ids: Set<UUID>) throws {
+    /// When a deletion deletes the blob files nothing uses any more.
+    private enum BlobRemoval {
+        /// Right away, on the main actor.
+        case now
+        /// On a background queue (`BlobStore.removeInBackground(_:)`).
+        case inBackground
+    }
+
+    private func deleteClips(_ ids: Set<UUID>, removingBlobs removal: BlobRemoval = .now) throws {
         guard !ids.isEmpty else { return }
         let candidates = try blobHashes(of: ids)
         var remainingPins = pinned.filter { !ids.contains($0.id) }
@@ -435,7 +596,14 @@ public final class HistoryStore {
         if remainingPins.count != pinned.count { pinned = remainingPins }
         recent.removeAll { ids.contains($0.id) }
         // Committed; a file left behind is swept at the next launch.
-        try? removeBlobsIfUnreferenced(candidates)
+        switch removal {
+        case .now:
+            try? removeBlobsIfUnreferenced(candidates)
+        case .inBackground:
+            if let unreferenced = try? unreferencedBlobs(among: candidates) {
+                blobs.removeInBackground(unreferenced)
+            }
+        }
     }
 
     /// Renumbers `pins` 0, 1, 2… in the database and in place.
@@ -454,7 +622,7 @@ public final class HistoryStore {
 
     private static let clipColumns = """
         id, kind, title, search_text, content_hash, source_bundle_id,
-        first_copied_at, last_copied_at, copy_count, pin_order, byte_size, metadata
+        first_copied_at, last_copied_at, copy_count, pin_order, byte_size, metadata, custom_title
         """
 
     /// The clips matching `clause` that can be read; the others are counted
@@ -493,6 +661,8 @@ public final class HistoryStore {
             id: id,
             kind: kind,
             title: row.string(at: 2) ?? "",
+            // Sanitized again: the database is a file anything could write.
+            customTitle: Clip.sanitizedCustomTitle(row.string(at: 12)),
             searchText: row.string(at: 3) ?? "",
             contentHash: row.string(at: 4) ?? "",
             sourceBundleID: row.string(at: 5),
@@ -514,13 +684,14 @@ public final class HistoryStore {
         }
         try database.run(
             """
-            INSERT INTO clips (\(Self.clipColumns)) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO clips (\(Self.clipColumns)) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (id) DO UPDATE SET
                 kind = excluded.kind, title = excluded.title, search_text = excluded.search_text,
                 content_hash = excluded.content_hash, source_bundle_id = excluded.source_bundle_id,
                 first_copied_at = excluded.first_copied_at, last_copied_at = excluded.last_copied_at,
                 copy_count = excluded.copy_count, pin_order = excluded.pin_order,
-                byte_size = excluded.byte_size, metadata = excluded.metadata
+                byte_size = excluded.byte_size, metadata = excluded.metadata,
+                custom_title = excluded.custom_title
             """,
             .text(clip.id.uuidString),
             .text(clip.kind.rawValue),
@@ -533,7 +704,8 @@ public final class HistoryStore {
             .int(clip.copyCount),
             .optional(clip.pinOrder),
             .int(clip.byteSize),
-            .text(metadata)
+            .text(metadata),
+            .optional(clip.customTitle)
         )
     }
 
@@ -623,8 +795,34 @@ public final class HistoryStore {
         return hashes
     }
 
+    /// Blob hashes used by clips other than `id` with this content: the
+    /// row a clip with new content replaces (unreadable, or from a newer Kept).
+    private func blobHashesOfOtherClips(withContentHash contentHash: String, than id: UUID) throws -> Set<String> {
+        try blobHashes(
+            query: """
+                SELECT r.blob_hash FROM representations r JOIN clips c ON c.id = r.clip_id
+                WHERE c.content_hash = ? AND c.id <> ? AND r.blob_hash IS NOT NULL
+                """,
+            .text(contentHash), .text(id.uuidString)
+        )
+    }
+
     private func referencedBlobHashes() throws -> Set<String> {
         try blobHashes(query: "SELECT DISTINCT blob_hash FROM representations WHERE blob_hash IS NOT NULL")
+    }
+
+    /// The hashes among `hashes` that no representation uses.
+    private func unreferencedBlobs(among hashes: Set<String>) throws -> Set<String> {
+        guard !hashes.isEmpty else { return [] }
+        let statement = try database.prepare("SELECT 1 FROM representations WHERE blob_hash = ? LIMIT 1")
+        var unreferenced = Set<String>()
+        for hash in hashes {
+            try statement.bind(hash, at: 1)
+            let isReferenced = try statement.step()
+            try statement.reset()
+            if !isReferenced { unreferenced.insert(hash) }
+        }
+        return unreferenced
     }
 
     /// Deletes the blob files among `hashes` that no representation uses.

@@ -34,6 +34,19 @@ struct PreferencesTests {
         #expect(preferences.captureFiles == true)
         #expect(preferences.maxItemBytes == 20 * 1024 * 1024)
         #expect(preferences.captureSettings == CaptureSettings())
+        #expect(preferences.forgetAfter == .never)
+    }
+
+    @Test("Saves how long unpinned clips stay, and falls back to never")
+    func persistsForgetAfter() throws {
+        defer { cleanUp() }
+        let defaults = try makeDefaults()
+        let preferences = Preferences(defaults: defaults)
+        preferences.forgetAfter = .week
+        #expect(defaults.string(forKey: "forgetAfter") == "week")
+        #expect(Preferences(defaults: defaults).forgetAfter == .week)
+        defaults.set("fortnight", forKey: "forgetAfter")
+        #expect(Preferences(defaults: defaults).forgetAfter == .never)
     }
 
     @Test("Saves changes for the next launch")

@@ -1,3 +1,4 @@
+import Dispatch
 import Foundation
 
 /// Large payloads as content-addressed files: `<directory>/<sha256>`.
@@ -80,6 +81,34 @@ struct BlobStore: Sendable {
             }
         }
     }
+
+    /// Deletes these blobs on a background queue, so a big batch (old
+    /// clips forgotten at once) doesn't hold up the main actor. The caller
+    /// has checked that no clip references them; a hash reserved before
+    /// its turn comes (a capture or an edit using the same bytes again)
+    /// keeps its file. Failures are left for the next launch's sweep.
+    func removeInBackground(_ hashes: Set<String>) {
+        let hashes = hashes.filter(Self.isValidHash)
+        guard !hashes.isEmpty else { return }
+        reservations.markForRemoval(hashes)
+        let store = self
+        Self.removalQueue.async {
+            for hash in hashes {
+                let location = store.url(for: hash)
+                store.reservations.removeIfStillPending(hash) {
+                    _ = try? Self.removeFile(at: location)
+                }
+            }
+        }
+    }
+
+    /// Returns once every `removeInBackground(_:)` so far has finished.
+    func waitForBackgroundRemovals() {
+        Self.removalQueue.sync {}
+    }
+
+    /// Where `removeInBackground(_:)` deletes files, one batch at a time.
+    private static let removalQueue = DispatchQueue(label: "app.kept.blob-removal", qos: .utility)
 
     /// The hashes of every stored blob.
     func storedHashes() throws(HistoryStoreError) -> Set<String> {

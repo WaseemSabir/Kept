@@ -38,6 +38,28 @@ struct ClipSearchTests {
         #expect(titles("rep", recent: recent) == ["Report Q3", "Prepared slides", "Ramen expo"])
     }
 
+    @Test("Matches a clip's custom title as well as its content")
+    func matchesCustomTitles() {
+        let named = Clip(
+            kind: .text,
+            title: "Thanks for reaching out",
+            customTitle: "Support reply",
+            searchText: "Thanks for reaching out",
+            contentHash: "a",
+            firstCopiedAt: .at(-2),
+            lastCopiedAt: .at(-2),
+            byteSize: 23
+        )
+        let recent = [clip("supportive words", age: 1), named]
+        #expect(ClipSearch.results(for: "support", pinned: [], recent: recent).map(\.displayTitle) == ["supportive words", "Support reply"])
+        #expect(ClipSearch.results(for: "reaching", pinned: [], recent: recent).map(\.id) == [named.id])
+        #expect(ClipSearch.results(for: "reply thanks", pinned: [], recent: recent).map(\.id) == [named.id])
+        // Each starts words: "thanks" is a word start, not a substring.
+        #expect(ClipSearch.results(for: "thanks", pinned: [], recent: [named, clip("nothanks", age: 3)]).map(\.id).first == named.id)
+        #expect(named.displayTitle == "Support reply")
+        #expect(clip("plain").displayTitle == "plain")
+    }
+
     @Test("Requires every token to match")
     func matchesAllTokens() {
         let recent = [

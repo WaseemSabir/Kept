@@ -26,6 +26,8 @@ public enum PreferenceDefaults {
     /// 1 MB to 100 MB: everything Kept stores is read into memory on the
     /// main actor when it's recorded or pasted.
     public static let maxItemBytesRange = (1024 * 1024)...(100 * 1024 * 1024)
+    /// Unpinned clips stay until the history is full.
+    public static let forgetAfter = RetentionPeriod.never
 
     /// The history sizes to offer: `historyLimitChoices`, plus `current` in
     /// its place when it isn't one of them (set by an older version, say),

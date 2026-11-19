@@ -60,6 +60,11 @@ public final class Preferences {
         }
     }
 
+    /// How long unpinned clips stay after they were last copied or pasted.
+    public var forgetAfter: RetentionPeriod {
+        didSet { defaults.set(forgetAfter.rawValue, forKey: Key.forgetAfter) }
+    }
+
     @ObservationIgnored private let defaults: UserDefaults
 
     public init(defaults: UserDefaults = .standard) {
@@ -84,6 +89,8 @@ public final class Preferences {
             defaults.object(forKey: Key.maxItemBytes) as? Int ?? PreferenceDefaults.maxItemBytes,
             to: PreferenceDefaults.maxItemBytesRange
         )
+        forgetAfter = defaults.string(forKey: Key.forgetAfter).flatMap(RetentionPeriod.init(rawValue:))
+            ?? PreferenceDefaults.forgetAfter
     }
 
     /// What capture needs, as a value for `CapturePolicy` and `ClipBuilder`.
@@ -147,6 +154,7 @@ public final class Preferences {
         static let captureImages = "captureImages"
         static let captureFiles = "captureFiles"
         static let maxItemBytes = "maxItemBytes"
+        static let forgetAfter = "forgetAfter"
     }
 
     private static func clamp(_ value: Int, to range: ClosedRange<Int>) -> Int {
