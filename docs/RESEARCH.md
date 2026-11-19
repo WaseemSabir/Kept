@@ -217,7 +217,10 @@ and 27. macOS 26 is the last release for Intel, so ship a universal binary.
 ### 3. Source app
 `NSWorkspace.shared.frontmostApplication` at detection time gives `.bundleIdentifier`,
 `.localizedName` and `.icon`. It can be wrong by up to one poll interval if the user switches apps;
-that's acceptable. Store only the bundle ID. Resolve icons lazily with
+that's acceptable for attribution, but not for exclusions: a password manager's quick-access
+window can copy (unmarked) and hand focus back within one poll. Kept therefore logs
+`NSWorkspace.didActivateApplicationNotification` and skips a copy if an excluded app was frontmost
+at any moment since the previous poll. Store only the bundle ID. Resolve icons lazily with
 `NSWorkspace.shared.urlForApplication(withBundleIdentifier:)` and `icon(forFile:)`, and cache them
 per bundle ID (Maccy's `ApplicationImageCache`). Excluded-app checks use the same bundle ID.
 

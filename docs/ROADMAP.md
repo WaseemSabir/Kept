@@ -156,6 +156,25 @@ Notes (M5–M7, A3):
 - ☑ TIFF → PNG re-encode, thumbnails (`CGImageSource`), image size cap
 - ☑ File icons and multi-file items; preview of images and files
 
+Notes (review fixes: robustness, privacy, performance):
+- Capture reads one image type per item (PNG, JPEG, HEIC, then TIFF), none when images
+  are off, and skips copies of more than 1,000 items (`CapturePolicy.maxItems`). File
+  reference resolution, TIFF → PNG, building, hashing and blob writes (with fsync) all run
+  in the detached build task; blobs are reserved so a clear or delete in between can't
+  remove them. `NSPasteboard` reads stay on the main actor (not documented thread-safe).
+- A build that finishes after the history was cleared, or after pause, an exclusion or a
+  kind toggle changed, is dropped with its blob files.
+- An excluded app frontmost at any moment since the previous poll stops a copy
+  (`AppActivationLog`), so quick-access windows that copy and hand focus back are caught.
+- The preview sanitizes all text and file paths (`TextSanitizer.multiline`: line breaks
+  kept, every character capped at 16 scalars, 20,000 UTF-16 units), reads only the types it
+  shows, counts lines on bytes, loads big clips off the main actor with cancellation and
+  keeps the last 16. Thumbnails read one representation off the main actor, share loads,
+  and are bounded by bytes (16 MB rows, 64 MB previews).
+- Plain text (⌥⏎, the global shortcut, the preview) comes from `PasteboardItem.plainText`:
+  string, URL, RTF, then HTML, so HTML-only clips work. A failed "mark used" no longer
+  stops a paste. "Ignore next copy" is a toggle.
+
 ## M9 — Onboarding, accessibility, release
 - ☑ First-launch welcome window (where Kept is, the recorded shortcut, the paste permission, open at login; again from About)
 - ☑ First-paste permission: version-aware copy-only hint with "Allow Kept to paste…" (A2)
