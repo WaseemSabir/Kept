@@ -52,13 +52,13 @@ struct PasteboardMonitorTests {
     func pauseAndIgnoreNext() {
         let pasteboard = makePasteboard()
         defer { pasteboard.releaseGlobally() }
-        var isPaused = true
-        let monitor = PasteboardMonitor(pasteboard: pasteboard, isPaused: { isPaused })
+        let pause = PauseSwitch(isOn: true)
+        let monitor = PasteboardMonitor(pasteboard: pasteboard, isPaused: { pause.isOn })
 
         pasteboard.simulateCopy("while paused")
         #expect(monitor.poll() == .paused)
 
-        isPaused = false
+        pause.isOn = false
         monitor.ignoreNextCopy()
         #expect(monitor.isIgnoringNextCopy)
         pasteboard.simulateCopy("a password typed by hand")
@@ -66,5 +66,15 @@ struct PasteboardMonitorTests {
         #expect(!monitor.isIgnoringNextCopy)
         let next = pasteboard.simulateCopy("next")
         #expect(monitor.poll() == .changed(changeCount: next))
+    }
+}
+
+/// Stands in for `Preferences.isPaused`.
+@MainActor
+private final class PauseSwitch {
+    var isOn: Bool
+
+    init(isOn: Bool) {
+        self.isOn = isOn
     }
 }

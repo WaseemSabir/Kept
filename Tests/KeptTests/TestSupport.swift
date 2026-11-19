@@ -76,7 +76,7 @@ extension NSPasteboard {
     /// Replaces the contents with `string` (plus empty marker types), the way
     /// another app's copy would, and returns the new change count.
     @discardableResult
-    func simulateCopy(_ string: String, markers: [PasteboardType] = []) -> Int {
+    func simulateCopy(_ string: String, markers: [KeptCore.PasteboardType] = []) -> Int {
         let changeCount = clearContents()
         let item = NSPasteboardItem()
         item.setString(string, forType: .string)

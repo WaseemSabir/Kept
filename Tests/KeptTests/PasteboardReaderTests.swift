@@ -84,8 +84,8 @@ struct PasteboardReaderTests {
         let file = directory.appendingPathComponent("Report 2041.pdf")
         try Data("%PDF".utf8).write(to: file)
 
-        let reference: CFURL = try #require(CFURLCreateFileReferenceURL(kCFAllocatorDefault, file as CFURL, nil))
-        let referenceString = CFURLGetString(reference) as String
+        let reference = try #require(CFURLCreateFileReferenceURL(kCFAllocatorDefault, file as CFURL, nil))
+        let referenceString = CFURLGetString(reference.takeRetainedValue()) as String
         #expect(referenceString.hasPrefix("file:///.file/id="))
 
         let resolved = PasteboardReader.resolvingFileReference(Data(referenceString.utf8))
