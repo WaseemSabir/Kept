@@ -106,11 +106,40 @@ A single floating panel, ~720 × 460 pt, centered on the active screen
   says "esc Close" (or "esc Clear search"). Clearing history replaces the
   footer with an inline confirmation ("Clear 13 unpinned clips? Pinned
   clips stay." ⏎ / esc), never a modal, which would activate Kept.
-- Until pasting lands (M4), ⏎ copies, so the footer says "Copy".
+- The footer names what the keys do with the current settings: "⏎ Paste
+  ⌥⏎ Paste as plain text ⌘⏎ Copy"; with "always paste plain text" ⏎ and
+  ⌥⏎ swap ("Paste as plain text" / "Paste with formatting"); with "paste
+  directly" off the verbs become "Copy" and ⌘⏎ isn't shown.
 - Snapshots of every state, light and dark, come from
   `Kept --render-snapshots <dir>` (CI artifact `panel-snapshots`); they
   draw on the opaque window background because vibrancy doesn't render
   offscreen.
+
+**As built (A2): the copy-only hint.** When Kept copies but can't paste
+(no permission yet, secure input, Kept itself in front), a small HUD
+appears just above the bottom edge of where the panel was (or near the
+bottom of the active screen for the global shortcut):
+
+```
+┌──────────────────────────────────────────┐
+│ Copied. Press ⌘V to paste.               │   13pt medium, ink; ⌘V as a key cap
+│ To paste for you, Kept needs Accessibility│   12pt, inkMuted (first time only)
+│ access in Privacy & Security settings.   │
+│                    [Allow Kept to paste…] │   small native button
+└──────────────────────────────────────────┘
+```
+
+- The panel's vibrancy, 12pt corners, a hairline edge and the system
+  shadow; 12pt padding; 300pt wide with the explanation, as wide as its
+  line without. It never takes the keyboard, so ⌘V goes to the app.
+- The explanation and button appear once; after that the hint is just
+  "Copied. Press ⌘V to paste." for 2.5 s and lets clicks through. The
+  first one stays 8 s, longer while the pointer is over it.
+- Up to macOS 26 it names Accessibility; from macOS 27 (renamed and split
+  pane) it says "Kept needs your permission in Privacy & Security
+  settings", which is right whichever part lists PostEvent.
+- Fades in and out in 120 ms, not at all under Reduce Motion; VoiceOver
+  announces it, since it never takes focus.
 
 ### Principles
 
@@ -124,7 +153,8 @@ A single floating panel, ~720 × 460 pt, centered on the active screen
 4. **Native materials.** System font, vibrancy, semantic colors; respects
    light/dark, Reduce Motion, Reduce Transparency and Increase Contrast.
 5. **Quiet motion.** Only the panel's appearance animates (≤120 ms fade +
-   0.98→1 scale, off under Reduce Motion). Selection moves instantly.
+   0.98→1 scale, off under Reduce Motion), and the copy-only hint fades
+   in and out the same way. Selection moves instantly.
 
 ## Review against the defaults
 

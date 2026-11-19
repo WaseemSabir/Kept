@@ -91,9 +91,27 @@ Notes:
 
 ## M4 — Paste
 - ☑ Write a clip back to the pasteboard (all representations / plain text only)
-- ◐ Synthesize ⌘V into the previous app (layout-aware key code), skip own write in monitor — own writes are skipped; ⌘V not yet
-- ◐ ⏎ paste · ⌥⏎ plain · ⌘⏎ copy only · ⌘1–9 · ⌥⌘1–9 — keys wired; each copies and closes until ⌘V lands
-- ☐ Permission: `CGPreflightPostEventAccess` / request on first paste; copy-only fallback with hint
+- ☑ Synthesize ⌘V into the previous app (layout-aware key code), skip own write in monitor
+- ☑ ⏎ paste · ⌥⏎ plain · ⌘⏎ copy only · ⌘1–9 · ⌥⌘1–9 · double-click; "always paste plain text" swaps ⏎/⌥⏎
+- ☑ Permission: `CGPreflightPostEventAccess` / request on first paste; copy-only fallback with hint
+- ☑ Global "paste clipboard as plain text" shortcut (no default)
+
+Notes:
+- A2. `PastePolicy` (pure, tested over every combination) decides format and delivery:
+  ⌘⏎ or "paste directly" off copy quietly; Kept frontmost or secure input copy with
+  "Press ⌘V"; no PostEvent access copies, calls `CGRequestPostEventAccess()` once and shows
+  the "Allow Kept to paste…" hint once, then only "Copied. Press ⌘V to paste." Both are
+  remembered in UserDefaults (`pasteAccessRequested`, `pastePermissionHintShown`).
+- The ⌘V key is resolved under ⌘ first, so layouts that switch to QWERTY while ⌘ is held
+  ("Dvorak – QWERTY ⌘") paste with QWERTY's V; non-Latin layouts use the ASCII-capable
+  layout's V; `kVK_ANSI_V` is the last resort. Posted 50 ms after the panel hides.
+- With "paste directly" off the footer says "Copy" / "Copy as plain text" (an honest label);
+  with it on, the footer also shows "⌘⏎ Copy".
+- The plain-text shortcut keeps privacy markers and the source app when it rewrites the
+  clipboard, and records a copy the monitor hasn't polled yet before replacing it.
+- CI can't post events or grant TCC access, so the real ⌘V, the system prompt and the
+  hint window need a hand check on macOS 14/15/26/27 (ad-hoc builds lose the permission on
+  every rebuild: TCC keys it to the code hash).
 
 ## M5 — Pins & cleanup
 - ◐ ⌘P pin/unpin, pinned section order, reorder pins (drag) — drag to reorder not yet
@@ -103,12 +121,12 @@ Notes:
 ## M6 — Settings
 - ☐ Settings window (owned `NSWindow`, toolbar panes)
 - ◐ General: launch at login (`SMAppService`), history size, paste directly vs copy only, always paste plain text, panel position — core `Preferences` done (M1)
-- ☐ Shortcuts: open Kept, paste clipboard as plain text (no default), pause capture (no default)
+- ◐ Shortcuts: open Kept, paste clipboard as plain text (no default), pause capture (no default) — names (`togglePanel`, `pastePlainText`, `togglePause`) declared and handled (A2); recorder UI not yet
 - ◐ Privacy: pause, excluded apps (+/−, defaults), ignore Universal Clipboard, clear history — core `Preferences` and `HistoryStore.clearAll` done (M1)
 
 ## M7 — Menu bar & app identity
 - ◐ Left-click toggles panel; right-click / ⌥-click menu (Pause, Clear history, Settings…, Quit) — M0 has toggle and Quit
-- ◐ Custom template menu bar glyph; dimmed when paused — glyph + paused variant drawn (`MenuBarIcon`); wiring to pause comes with M6/M7
+- ☑ Custom template menu bar glyph; dimmed when paused — glyph + paused variant drawn (`MenuBarIcon`); follows `Preferences.isPaused` (A2)
 - ☑ App icon — "the marked line" (`Resources/Icon/*.svg` → `scripts/make-icon.py` → `Resources/AppIcon.icns`)
 - ☐ Reopen (launching again) opens Settings — escape hatch if the menu bar icon is hidden
 
@@ -117,7 +135,7 @@ Notes:
 - ☑ File icons and multi-file items; preview of images and files
 
 ## M9 — Onboarding, accessibility, release
-- ☐ First-paste permission sheet with version-aware copy; pasteboard privacy check (`accessBehavior`)
+- ◐ First-paste permission sheet with version-aware copy; pasteboard privacy check (`accessBehavior`) — A2 shows a version-aware copy-only hint with an "Allow Kept to paste…" button on the first paste without access; no sheet or `accessBehavior` check yet
 - ◐ VoiceOver labels; Reduce Motion / Transparency / Increase Contrast — panel rows, filters and hints are labelled; no motion under Reduce Motion; stronger marker under Increase Contrast; needs a VoiceOver pass
 - ☑ Snapshot renders of the panel for design review in CI (`Kept --render-snapshots <dir>`, artifact `panel-snapshots`)
 - ☐ Release workflow (ad-hoc → signed → notarized when secrets exist), README screenshots

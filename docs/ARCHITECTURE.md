@@ -46,9 +46,14 @@ Sources/
   Kept/                       macOS app (executable target)
     App/                      main.swift, AppDelegate, AppEnvironment (composition root)
     Clipboard/                PasteboardMonitor, PasteboardReader, CaptureService, PasteboardWriter,
-                              PasteService (+ ClipCopying), ImageIOInspector, ImageTranscoder, KeyboardLayout
-    Permissions/              PostEventPermission, PasteboardAccess
-    Hotkeys/                  KeyboardShortcuts.Name definitions + handlers
+                              ImageIOInspector, ImageTranscoder; paste: PasteService (+ ClipPasting),
+                              PastePolicy, PastePlan, PasteRequest, PasteOptions, ClipboardPlainText,
+                              KeystrokePosting / PasteKeystrokePoster, KeyboardLayout, UnicodeKeyLayout,
+                              PasteKeyResolver (+ KeyTranslating)
+    Permissions/              PermissionChecking / PostEventPermission, KeyboardFocusChecking /
+                              SystemKeyboardFocus, PasteOnboarding (later: PasteboardAccess)
+    PasteHint/                PasteHintController (+ PasteHintPresenting), HintPanel, PasteHintView, PasteHintCopy
+    Hotkeys/                  KeyboardShortcuts.Name definitions + HotkeyController
     Panel/                    FloatingPanel (NSPanel), PanelController, PanelViewModel, PanelKeyRouter
                               (+ KeyPress, PanelCommand), ClipDisplay, ClipFacts, PreviewLoader, Views/
     MenuBar/                  StatusItemController, MenuBarIcon
@@ -178,7 +183,8 @@ they are 10 minutes old; nothing when references can't be read).
   copies; each is recorded on the main actor with the time its copy was
   seen, unless the same content was recorded more recently.
 - **PasteboardWriter** — writes a clip's items back as `NSPasteboardItem`s
-  (all representations, or plain text only) with `.keptOwn` and `.source`.
+  (all representations, or plain text only) with `.keptOwn`, `.source` and
+  any privacy markers passed in.
 - **PanelController** — owns `FloatingPanel` (non-activating `NSPanel`,
   `.statusBar` level, `canBecomeKey = true`), shows it with
   `orderFrontRegardless(); makeKey()` so the target app stays frontmost
@@ -189,20 +195,70 @@ they are 10 minutes old; nothing when references can't be read).
   through to the search field. ⌘X/⌘C/⌘V/⌘A/⌘Z are sent to the field
   directly, since an agent app has no Edit menu.
 - **PanelViewModel** — `@Observable`; holds query, filter, selection;
-  derives visible clips via `ClipSearch`; carries out commands (move, copy,
-  pin, delete, clear with an inline confirm); refreshes when the store
-  changes. Views only render it; caches (app icons, thumbnails) live in
-  `PanelResources`.
-- **PasteService** — writes the clip, tells the monitor its change count
-  and marks the clip used. Next (M4): hide the panel and post ⌘V with
-  `CGEvent` (layout-aware key code) if `CGPreflightPostEventAccess()`;
-  otherwise copy-only plus a hint.
+  derives visible clips via `ClipSearch`; carries out commands (move,
+  paste, pin, delete, clear with an inline confirm); refreshes when the
+  store changes. Footer labels follow `PasteOptions`. Views only render
+  it; caches (app icons, thumbnails) live in `PanelResources`.
+- **PasteService** — see the paste flow below. Depends on protocols
+  (`PermissionChecking`, `KeystrokePosting`, `KeyboardFocusChecking`,
+  `PasteHintPresenting`), so tests fake the system.
 - **Snapshots** — `Kept --render-snapshots <dir>` fills a temporary store
-  with `SampleHistory`, renders the panel offscreen at 2× in light and
-  dark (opaque background: vibrancy doesn't draw offscreen) and exits. CI
-  runs it and uploads the PNGs as the `panel-snapshots` artifact.
+  with `SampleHistory`, renders the panel (and the copy-only hint) offscreen
+  at 2× in light and dark (opaque background: vibrancy doesn't draw
+  offscreen) and exits. CI runs it and uploads the PNGs as the
+  `panel-snapshots` artifact.
 - **Hotkeys** — `KeyboardShortcuts` package (Carbon `RegisterEventHotKey`
   under the hood; no permission prompt; recorder UI for settings).
+  `HotkeyController` listens for `.togglePanel` (⇧⌘V), `.pastePlainText`
+  and `.togglePause` (no defaults; the Settings recorder sets them).
+  Pausing, from anywhere, swaps the menu bar glyph to its hollow marker.
+
+### Paste flow
+
+1. A key becomes a `PanelCommand` and then a `PasteRequest`: ⏎, ⌘1–9 and
+   a double-click → `.paste(alternate: false)`; ⌥⏎ and ⌥⌘1–9 →
+   `.paste(alternate: true)`; ⌘⏎ → `.copyOnly`. The global "paste
+   clipboard as plain text" shortcut is `.clipboardAsPlainText`.
+2. `PasteService.prepare` asks `PastePolicy` (pure) for a `PastePlan` from
+   the request, `PasteOptions` and the conditions: PostEvent access
+   (`CGPreflightPostEventAccess`), whether Kept already asked and already
+   explained (`PasteOnboarding`, UserDefaults keys
+   `pasteAccessRequested` / `pastePermissionHintShown`), Kept frontmost
+   (`NSRunningApplication.current.isActive`) and secure input
+   (`IsSecureEventInputEnabled`). Format: ⏎ writes the clip as copied, ⌥⏎
+   plain text, swapped by "always paste plain text"; ⌘⏎ writes what ⏎
+   would. Delivery, first match wins: ⌘⏎ or "paste directly" off → copy,
+   no hint; Kept frontmost → copy + "Press ⌘V"; no access → copy, request
+   access the first time, hint with the "Allow Kept to paste…" button the
+   first time and "Press ⌘V" after; secure input → copy + "Press ⌘V";
+   otherwise paste.
+3. It writes the clip (`PasteboardWriter`), tells the monitor the change
+   count (so the write is never captured) and marks the clip used. If the
+   write fails the panel stays open with a notice.
+4. The panel hides; then `complete` requests access
+   (`CGRequestPostEventAccess`) if planned, posts ⌘V, or shows the hint
+   near the panel's last frame.
+5. `PasteKeystrokePoster` waits 50 ms (the panel has ordered out and the
+   target app's window is key again), then posts key down/up from a
+   `.combinedSessionState` source with local events suppressed, flags ⌘
+   plus the left-⌘ device bit, to `.cgSessionEventTap`. The key code comes
+   from `KeyboardLayout`: `PasteKeyResolver` asks the current layout, then
+   the current ASCII-capable one, which key types "v" — with ⌘ held first
+   (so "Dvorak – QWERTY ⌘" resolves to QWERTY's V), then without — and
+   falls back to `kVK_ANSI_V`. Cached; dropped on
+   `kTISNotifySelectedKeyboardInputSourceChanged`.
+6. `PasteHintController` shows a borderless, non-activating `HintPanel`
+   that never becomes key (its button takes the first click), fades in
+   and out in 120 ms (not under Reduce Motion), stays 2.5 s (8 s with the
+   button, longer while hovered) and is announced to VoiceOver. The button
+   opens `x-apple.systempreferences:…?Privacy_Accessibility`, falling back
+   to Privacy & Security. Opening the panel puts the hint away.
+
+"Paste clipboard as plain text" hides the panel, polls the monitor (so a
+copy made in the last half second is recorded first), rewrites each
+item's text (string, URL or RTF) as plain text with the original privacy
+markers and source, and then follows steps 4–6 with no anchor (the hint
+sits at the bottom of the active screen). Nothing textual → a beep.
 
 ## Conventions
 
