@@ -5,8 +5,19 @@ import KeptCore
 ///
 /// It asks `CapturePolicy` about the pasteboard's types and source app
 /// first, so content that's marked secret, comes from an excluded app or
-/// isn't wanted is never read. Then it reads only the types Kept stores
-/// (`PasteboardType.captured`), item by item.
+/// isn't wanted is never read. A copy of more than `CapturePolicy.maxItems`
+/// items is skipped unread. Then it reads, item by item, only what
+/// `CapturePolicy.typesToRead(offered:)` allows: the text types, file URLs
+/// when files are kept, and one image type when images are kept (a
+/// screenshot's TIFF next to its PNG, or a Universal Clipboard photo's
+/// second format fetched from the phone, is never loaded).
+///
+/// Threading: `NSPasteboard` and `NSPasteboardItem` aren't documented as
+/// thread-safe, and reading an item can make AppKit fetch promised data
+/// from the app that copied, so every pasteboard call stays on the main
+/// actor. The work after the read runs off it: `normalized(_:)` resolves
+/// Finder's file references and re-encodes TIFF, then capture builds,
+/// hashes and writes blob files in the same detached task.
 struct PasteboardReader {
     enum ReadResult: Equatable {
         case ignored(IgnoreReason)
@@ -47,7 +58,9 @@ struct PasteboardReader {
             return .ignored(reason)
         }
 
-        let items = (pasteboard.pasteboardItems ?? []).compactMap { Self.capturedItem($0) }
+        let pasteboardItems = pasteboard.pasteboardItems ?? []
+        guard pasteboardItems.count <= CapturePolicy.maxItems else { return .ignored(.tooManyItems) }
+        let items = pasteboardItems.compactMap { Self.capturedItem($0, policy: policy) }
         guard pasteboard.changeCount == changeCount else { return .changedDuringRead }
         guard !items.isEmpty else { return .ignored(.empty) }
         // Every declared type goes along, markers included, so the builder
@@ -60,28 +73,29 @@ struct PasteboardReader {
         ))
     }
 
-    /// The item's captured representations in the order the source app
-    /// offered them; `nil` when it has none.
+    /// The item's representations worth reading, in the order the source
+    /// app offered them; `nil` when it has none.
     @MainActor
-    private static func capturedItem(_ item: NSPasteboardItem) -> PasteboardItem? {
+    private static func capturedItem(_ item: NSPasteboardItem, policy: CapturePolicy) -> PasteboardItem? {
+        let nativeTypes = item.types
+        let wanted = policy.typesToRead(offered: nativeTypes.map { PasteboardType(rawValue: $0.rawValue) })
         var seen = Set<PasteboardType>()
-        let representations = item.types.compactMap { nativeType -> ClipRepresentation? in
+        let representations = nativeTypes.compactMap { nativeType -> ClipRepresentation? in
             let type = PasteboardType(rawValue: nativeType.rawValue)
-            guard capturedTypes.contains(type), seen.insert(type).inserted,
+            guard wanted.contains(type), seen.insert(type).inserted,
                   let data = item.data(forType: nativeType)
             else { return nil }
-            return ClipRepresentation(type, type == .fileURL ? resolvingFileReference(data) : data)
+            return ClipRepresentation(type, data)
         }
         return representations.isEmpty ? nil : PasteboardItem(representations)
     }
 
-    private static let capturedTypes = Set(PasteboardType.captured)
-
-    // MARK: Fix-ups
+    // MARK: Fix-ups, off the main actor
 
     /// Finder puts file *reference* URLs (`file:///.file/id=…`) on the
     /// pasteboard. They only make sense on this Mac while the file exists, so
-    /// they're turned into ordinary path URLs. Anything else is returned as is.
+    /// they're turned into ordinary path URLs. Anything else is returned as
+    /// is. Asks the file system, so it runs off the main actor.
     static func resolvingFileReference(_ data: Data) -> Data {
         let text = String(decoding: data, as: UTF8.self)
             .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "\0")))
@@ -92,17 +106,21 @@ struct PasteboardReader {
         return Data(pathURL.absoluteString.utf8)
     }
 
-    /// `snapshot` with TIFF-only images re-encoded as PNG, which is usually
-    /// several times smaller. Items that already offer PNG are left alone.
-    /// Runs off the main actor, before the clip is built.
+    /// `snapshot` made ready to build, off the main actor: file reference
+    /// URLs resolved to paths, and TIFF-only images re-encoded as PNG, which
+    /// is usually several times smaller (items that already offer PNG are
+    /// left alone).
     static func normalized(_ snapshot: PasteboardSnapshot) -> PasteboardSnapshot {
         var snapshot = snapshot
         snapshot.items = snapshot.items.map { item in
+            var item = item
+            for index in item.representations.indices where item.representations[index].type == .fileURL {
+                item.representations[index].data = resolvingFileReference(item.representations[index].data)
+            }
             guard item.data(for: .png) == nil,
                   let index = item.representations.firstIndex(where: { $0.type == .tiff }),
                   let png = ImageTranscoder.pngData(from: item.representations[index].data)
             else { return item }
-            var item = item
             item.representations[index] = ClipRepresentation(.png, png)
             return item
         }

@@ -67,6 +67,41 @@ struct PasteboardMonitorTests {
         let next = pasteboard.simulateCopy("next")
         #expect(monitor.poll() == .changed(changeCount: next))
     }
+
+    @Test("Ignoring the next copy can be taken back")
+    func cancelIgnoreNextCopy() {
+        let pasteboard = makePasteboard()
+        defer { pasteboard.releaseGlobally() }
+        let monitor = PasteboardMonitor(pasteboard: pasteboard, isPaused: { false })
+
+        monitor.ignoreNextCopy()
+        #expect(monitor.isIgnoringNextCopy)
+        monitor.cancelIgnoreNextCopy()
+        #expect(!monitor.isIgnoringNextCopy)
+        let next = pasteboard.simulateCopy("kept after all")
+        #expect(monitor.poll() == .changed(changeCount: next))
+    }
+
+    @Test("Tells capture when the previous poll ran")
+    func previousPollTime() throws {
+        let pasteboard = makePasteboard()
+        defer { pasteboard.releaseGlobally() }
+        let monitor = PasteboardMonitor(pasteboard: pasteboard, isPaused: { false })
+        #expect(monitor.previousPollTime == nil)
+
+        let beforeFirst = AppActivationTracker.now()
+        monitor.poll()
+        let afterFirst = AppActivationTracker.now()
+        var windowStart: Double?
+        monitor.onChange = { _ in windowStart = monitor.previousPollTime }
+        pasteboard.simulateCopy("copied between polls")
+        monitor.poll()
+
+        // The change happened after the first poll, which is when the window opens.
+        let start = try #require(windowStart)
+        #expect(start >= beforeFirst)
+        #expect(start <= afterFirst)
+    }
 }
 
 /// Stands in for `Preferences.isPaused`.

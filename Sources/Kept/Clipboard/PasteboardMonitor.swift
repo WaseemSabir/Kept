@@ -29,10 +29,15 @@ final class PasteboardMonitor {
     var onChange: (@MainActor (Int) -> Void)?
     /// Whether the next change will be skipped.
     private(set) var isIgnoringNextCopy = false
+    /// When the poll before the latest one ran (`AppActivationTracker.now()`
+    /// time). While `onChange` runs, the change it reports was made after
+    /// this, so capture checks every app that was in front since then.
+    private(set) var previousPollTime: Double?
 
     private let pasteboard: NSPasteboard
     private let isPaused: @MainActor () -> Bool
     private var lastChangeCount: Int
+    private var lastPollTime: Double?
     private var ownChangeCounts: Set<Int> = []
     private var timer: Timer?
 
@@ -49,6 +54,7 @@ final class PasteboardMonitor {
     func start() {
         guard timer == nil else { return }
         lastChangeCount = pasteboard.changeCount
+        lastPollTime = AppActivationTracker.now()
         let timer = Timer(timeInterval: Self.interval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 _ = self?.poll()
@@ -69,6 +75,11 @@ final class PasteboardMonitor {
         isIgnoringNextCopy = true
     }
 
+    /// Takes back `ignoreNextCopy()` before a copy used it up.
+    func cancelIgnoreNextCopy() {
+        isIgnoringNextCopy = false
+    }
+
     /// Records that Kept itself wrote the pasteboard and it now has `changeCount`.
     func noteOwnWrite(changeCount: Int) {
         ownChangeCounts.insert(changeCount)
@@ -77,6 +88,9 @@ final class PasteboardMonitor {
     /// Checks the pasteboard once. The timer calls this; tests call it directly.
     @discardableResult
     func poll() -> Outcome {
+        let now = AppActivationTracker.now()
+        previousPollTime = lastPollTime ?? now
+        lastPollTime = now
         let changeCount = pasteboard.changeCount
         guard changeCount != lastChangeCount else { return .unchanged }
         lastChangeCount = changeCount

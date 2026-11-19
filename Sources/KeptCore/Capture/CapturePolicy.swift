@@ -47,6 +47,20 @@ public struct CapturePolicy: Sendable {
         return .record
     }
 
+    /// The types worth reading from one pasteboard item that offers
+    /// `offered`, once the copy is to be recorded: the text types, file URLs
+    /// when files are kept, and a single image type
+    /// (`PasteboardType.preferredImageType(in:)`) when images are kept.
+    /// Everything else, other image formats included, is never read.
+    public func typesToRead(offered: some Sequence<PasteboardType>) -> Set<PasteboardType> {
+        var types = Set(PasteboardItem.textTypes)
+        if settings.captureFiles { types.insert(.fileURL) }
+        if settings.captureImages, let image = PasteboardType.preferredImageType(in: offered) {
+            types.insert(image)
+        }
+        return types
+    }
+
     /// The decision for a snapshot that has already been read (tests, and a
     /// final check once the source marker is known). Looks at the
     /// snapshot's `declaredTypes` as well as its items, since the app reads

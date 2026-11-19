@@ -64,4 +64,240 @@ struct CaptureServiceTests {
         let types = try store.representations(for: clip.id).flatMap(\.types)
         #expect(types == [.png])
     }
+
+    // MARK: Builds finishing late
+
+    @Test("Builds that finish out of order are recorded by when their copies were seen")
+    func outOfOrderBuilds() async throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        let slow = harness.pasteboard.simulateCopy("copied first")
+        await harness.gate.hold(slow)
+        harness.service.captureCurrentContents()
+        harness.pasteboard.simulateCopy("copied second")
+        harness.service.captureCurrentContents()
+
+        await waitUntil { harness.store.recent.count == 1 }
+        #expect(harness.store.recent.map(\.title) == ["copied second"])
+        await harness.gate.release(slow)
+        await harness.service.waitUntilIdle()
+        #expect(harness.store.recent.map(\.title) == ["copied second", "copied first"])
+    }
+
+    @Test("A slow build doesn't move a newer copy of the same content back in time")
+    func staleDuplicate() async throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        let slow = harness.pasteboard.simulateCopy("same words")
+        await harness.gate.hold(slow)
+        harness.service.captureCurrentContents()
+        harness.pasteboard.simulateCopy("same words")
+        harness.service.captureCurrentContents()
+
+        await waitUntil { harness.store.recent.count == 1 }
+        let recorded = try #require(harness.store.recent.first)
+        await harness.gate.release(slow)
+        await harness.service.waitUntilIdle()
+        #expect(harness.store.recent.count == 1)
+        #expect(harness.store.recent.first?.copyCount == 1)
+        #expect(harness.store.recent.first?.lastCopiedAt == recorded.lastCopiedAt)
+    }
+
+    @Test("A build that finishes after the history is cleared is dropped, blob files and all")
+    func buildAfterClear() async throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        // Big enough to become a blob file.
+        let held = harness.pasteboard.simulateCopy(String(repeating: "Lorem ipsum ", count: 8_000))
+        await harness.gate.hold(held)
+        harness.service.captureCurrentContents()
+        await waitUntil { await harness.gate.hasArrived(held) }
+
+        try harness.store.clearAll()
+        await harness.gate.release(held)
+        await harness.service.waitUntilIdle()
+        #expect(harness.store.recent.isEmpty)
+        #expect(try harness.blobFiles().isEmpty)
+    }
+
+    @Test("A build that finishes after pausing, excluding its app or turning its kind off is dropped")
+    func settingsChangedDuringBuild() async throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+
+        /// Captures what's on the pasteboard, changing the settings while
+        /// the build is held back.
+        func capture(changingSettings change: (inout CaptureSettings) -> Void) async {
+            let held = harness.pasteboard.changeCount
+            await harness.gate.hold(held)
+            harness.service.captureCurrentContents()
+            await waitUntil { await harness.gate.hasArrived(held) }
+            change(&harness.settings.value)
+            await harness.gate.release(held)
+            await harness.service.waitUntilIdle()
+            harness.settings.value = CaptureSettings()
+        }
+
+        harness.pasteboard.simulateCopy("copied before pausing")
+        await capture { $0.isPaused = true }
+        #expect(harness.store.recent.isEmpty)
+
+        harness.pasteboard.simulateCopy("from TextEdit", markers: [.source])
+        await capture { $0.excludedBundleIDs.insert("com.apple.textedit") }
+        #expect(harness.store.recent.isEmpty)
+
+        harness.pasteboard.clearContents()
+        harness.pasteboard.setData(try encodedImage(width: 4, height: 4, type: "public.png"), forType: .png)
+        await capture { $0.captureImages = false }
+        #expect(harness.store.recent.isEmpty)
+
+        // Unchanged settings: recorded.
+        harness.pasteboard.simulateCopy("kept")
+        await capture { _ in }
+        #expect(harness.store.recent.map(\.title) == ["kept"])
+    }
+
+    // MARK: Reading
+
+    @Test("A read that saw the pasteboard change records nothing and builds nothing")
+    func changedDuringRead() async throws {
+        let harness = try Harness(read: { _, _, _ in .changedDuringRead })
+        defer { harness.tearDown() }
+        harness.pasteboard.simulateCopy("half read")
+        harness.service.captureCurrentContents()
+        await harness.service.waitUntilIdle()
+        #expect(harness.store.recent.isEmpty)
+        #expect(await harness.gate.arrivedCount == 0)
+    }
+
+    @Test("A copy whose source marker names an excluded app is never read")
+    func excludedBySourceMarker() async throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        harness.pasteboard.clearContents()
+        let item = NSPasteboardItem()
+        item.setString("vault entry", forType: .string)
+        item.setString("com.bitwarden.desktop", forType: NSPasteboard.PasteboardType(PasteboardType.source.rawValue))
+        harness.pasteboard.writeObjects([item])
+
+        harness.service.captureCurrentContents()
+        await harness.service.waitUntilIdle()
+        #expect(harness.store.recent.isEmpty)
+        #expect(await harness.gate.arrivedCount == 0)
+    }
+
+    @Test("A copy is skipped when an excluded app was in front at any moment since the last poll")
+    func excludedAppInTheWindow() async throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        // The password manager came up, copied, and gave focus back to
+        // Safari, all between two polls.
+        let windowStart = AppActivationTracker.now()
+        harness.activations.record("com.1password.1password", at: windowStart)
+        harness.activations.record("com.apple.Safari", at: AppActivationTracker.now())
+        harness.pasteboard.simulateCopy("one-time password")
+        harness.service.captureCurrentContents(since: windowStart)
+        await harness.service.waitUntilIdle()
+        #expect(harness.store.recent.isEmpty)
+        #expect(await harness.gate.arrivedCount == 0)
+
+        // The next window opens with Safari in front.
+        harness.pasteboard.simulateCopy("a link from Safari")
+        harness.service.captureCurrentContents(since: AppActivationTracker.now())
+        await harness.service.waitUntilIdle()
+        #expect(harness.store.recent.map(\.title) == ["a link from Safari"])
+    }
+}
+
+// MARK: Helpers
+
+/// A capture service on a private pasteboard and a temporary history, with
+/// settings to change and builds to hold back.
+@MainActor
+private final class Harness {
+    @MainActor
+    final class SettingsBox {
+        var value = CaptureSettings()
+    }
+
+    let directory: URL
+    let pasteboard: NSPasteboard
+    let store: HistoryStore
+    let gate: BuildGate
+    let activations: AppActivationTracker
+    let settings: SettingsBox
+    let service: CaptureService
+
+    init(read: CaptureService.Read? = nil) throws {
+        let directory = try makeTemporaryDirectory()
+        let pasteboard = makePasteboard()
+        let store = try HistoryStore(directory: directory)
+        let gate = BuildGate()
+        let activations = AppActivationTracker(workspace: nil)
+        let settings = SettingsBox()
+        self.directory = directory
+        self.pasteboard = pasteboard
+        self.store = store
+        self.gate = gate
+        self.activations = activations
+        self.settings = settings
+        service = CaptureService(
+            pasteboard: pasteboard,
+            store: store,
+            settings: { settings.value },
+            activations: activations,
+            read: read,
+            willBuild: { snapshot in await gate.pass(snapshot) }
+        )
+    }
+
+    func blobFiles() throws -> [String] {
+        let blobs = directory.appendingPathComponent("blobs")
+        return try FileManager.default.contentsOfDirectory(atPath: blobs.path).filter { !$0.hasPrefix(".") }
+    }
+
+    func tearDown() {
+        pasteboard.releaseGlobally()
+        removeTemporaryDirectory(directory)
+    }
+}
+
+/// Holds builds back, by the change count of their copy, until released,
+/// so a test decides the order builds finish in.
+private actor BuildGate {
+    private var held: Set<Int> = []
+    private var arrived: [Int] = []
+
+    var arrivedCount: Int { arrived.count }
+
+    func hold(_ changeCount: Int) {
+        held.insert(changeCount)
+    }
+
+    func release(_ changeCount: Int) {
+        held.remove(changeCount)
+    }
+
+    func hasArrived(_ changeCount: Int) -> Bool {
+        arrived.contains(changeCount)
+    }
+
+    /// Called before each build; returns once the build may go on.
+    func pass(_ snapshot: PasteboardSnapshot) async {
+        arrived.append(snapshot.changeCount)
+        while held.contains(snapshot.changeCount) {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+    }
+}
+
+/// Waits until `condition` holds, for up to 30 seconds (other tests share
+/// the main actor).
+@MainActor
+private func waitUntil(_ condition: @MainActor () async -> Bool) async {
+    for _ in 0..<3_000 {
+        if await condition() { return }
+        try? await Task.sleep(for: .milliseconds(10))
+    }
+    Issue.record("Timed out waiting for a condition")
 }

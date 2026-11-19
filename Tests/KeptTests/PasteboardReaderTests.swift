@@ -98,6 +98,54 @@ struct PasteboardReaderTests {
         // Ordinary path URLs pass through untouched.
         let pathURL = Data(file.absoluteString.utf8)
         #expect(PasteboardReader.resolvingFileReference(pathURL) == pathURL)
+
+        // Resolved off the main actor, before the clip is built.
+        let snapshot = PasteboardSnapshot(items: [
+            PasteboardItem([ClipRepresentation(.fileURL, string: referenceString), ClipRepresentation(.string, string: "Report 2041.pdf")]),
+        ])
+        let normalized = PasteboardReader.normalized(snapshot)
+        #expect(normalized.items[0].data(for: .fileURL) == resolved)
+        #expect(normalized.items[0].data(for: .string) == Data("Report 2041.pdf".utf8))
+    }
+
+    @Test("Reads one image type per item, and none when images aren't kept")
+    func readsOneImageType() throws {
+        let pasteboard = makePasteboard()
+        defer { pasteboard.releaseGlobally() }
+        pasteboard.clearContents()
+        let item = NSPasteboardItem()
+        item.setString("Screenshot", forType: .string)
+        item.setData(try encodedImage(width: 40, height: 30, type: "public.tiff"), forType: .tiff)
+        item.setData(try encodedImage(width: 40, height: 30, type: "public.png"), forType: .png)
+        pasteboard.writeObjects([item])
+
+        guard case .snapshot(let snapshot) = read(pasteboard) else {
+            Issue.record("Expected a snapshot")
+            return
+        }
+        #expect(Set(snapshot.items.first?.types ?? []) == [.string, .png])
+        // The TIFF is declared but never read.
+        #expect(snapshot.declaredTypes.contains(.tiff))
+
+        guard case .snapshot(let textOnly) = read(pasteboard, settings: CaptureSettings(captureImages: false)) else {
+            Issue.record("Expected a snapshot")
+            return
+        }
+        #expect(textOnly.items.first?.types == [.string])
+    }
+
+    @Test("Skips a copy of more items than the cap without reading them")
+    func tooManyItems() {
+        let pasteboard = makePasteboard()
+        defer { pasteboard.releaseGlobally() }
+        pasteboard.clearContents()
+        let items = (0...CapturePolicy.maxItems).map { index -> NSPasteboardItem in
+            let item = NSPasteboardItem()
+            item.setString("file \(index)", forType: .string)
+            return item
+        }
+        pasteboard.writeObjects(items)
+        #expect(read(pasteboard) == .ignored(.tooManyItems))
     }
 
     @Test("TIFF-only images are re-encoded as PNG; PNG items are left alone")

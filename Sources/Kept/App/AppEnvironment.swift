@@ -36,7 +36,11 @@ final class AppEnvironment {
         self.hintController = hintController
         let pasteService: PasteService?
         if let store = opened.store {
-            captureService = CaptureService(store: store, settings: { preferences.captureSettings })
+            captureService = CaptureService(
+                store: store,
+                settings: { preferences.captureSettings },
+                activations: AppActivationTracker()
+            )
             pasteService = PasteService(
                 store: store,
                 writer: PasteboardWriter(),
@@ -98,7 +102,14 @@ final class AppEnvironment {
             menuActions: StatusMenu.Actions(
                 openPanel: { [panelController] in panelController.show(at: .statusItem) },
                 togglePause: { [preferences] in preferences.isPaused.toggle() },
-                ignoreNextCopy: { [monitor] in monitor.ignoreNextCopy() },
+                // A toggle: choosing the checked item takes it back.
+                ignoreNextCopy: { [monitor] in
+                    if monitor.isIgnoringNextCopy {
+                        monitor.cancelIgnoreNextCopy()
+                    } else {
+                        monitor.ignoreNextCopy()
+                    }
+                },
                 clearHistory: { [panelController] in panelController.showClearConfirmation(at: .statusItem) },
                 openSettings: showSettings
             ),
@@ -130,7 +141,11 @@ final class AppEnvironment {
             togglePause: { [preferences] in preferences.isPaused.toggle() }
         )
         if let captureService {
-            monitor.onChange = { _ in captureService.captureCurrentContents() }
+            monitor.onChange = { [weak monitor = self.monitor] _ in
+                // The copy was made since the previous poll; an excluded app
+                // in front at any moment of that stops it.
+                captureService.captureCurrentContents(since: monitor?.previousPollTime)
+            }
             monitor.start()
         }
         observeHistoryLimit()

@@ -128,6 +128,18 @@ struct CapturePolicyTests {
         #expect(PasteboardType.preferredImageType(in: [.string, .fileURL]) == nil)
     }
 
+    @Test("Reads text, files when kept, and one image type when kept")
+    func typesToRead() {
+        let screenshot: [PasteboardType] = [.png, .tiff, .jpeg]
+        let text: Set<PasteboardType> = [.string, .url, .rtf, .html]
+        #expect(policy.typesToRead(offered: screenshot) == text.union([.fileURL, .png]))
+        #expect(policy.typesToRead(offered: [.tiff, .string]) == text.union([.fileURL, .tiff]))
+        #expect(policy.typesToRead(offered: [.string]) == text.union([.fileURL]))
+
+        let textOnly = CapturePolicy(settings: CaptureSettings(captureImages: false, captureFiles: false))
+        #expect(textOnly.typesToRead(offered: screenshot + [.fileURL]) == text)
+    }
+
     @Test("Defaults the declared types to the items' types")
     func defaultsDeclaredTypes() {
         let snapshot = PasteboardSnapshot(items: [item((.rtf, "{}"), (.string, "a")), item((.string, "b"), (.html, "<b>"))])
