@@ -57,6 +57,7 @@ struct WelcomeView: View {
                 } label: {
                     Text("Done").frame(minWidth: Theme.WelcomeLayout.buttonWidth)
                 }
+                .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
             }
             .controlSize(.large)

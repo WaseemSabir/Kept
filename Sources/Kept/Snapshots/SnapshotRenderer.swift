@@ -192,7 +192,11 @@ enum SnapshotRenderer {
         increasedContrast: Bool = false,
         prepare: () -> Void
     ) async throws -> Data {
-        let root = view.environment(\.colorScheme, appearance.colorScheme)
+        // The high-contrast appearance draws system colors stronger; Kept's
+        // own tokens follow `forcesIncreasedContrast`.
+        let root = view
+            .environment(\.colorScheme, appearance.colorScheme)
+            .environment(\.forcesIncreasedContrast, increasedContrast)
         let hostingView = NSHostingView(rootView: root)
         let size = fixedSize ?? {
             let fitting = hostingView.fittingSize
