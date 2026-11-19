@@ -1,4 +1,9 @@
 import Foundation
+// CGRect's Swift API (Equatable, minX, midX…) lives in the CoreGraphics
+// overlay on Apple platforms; on Linux, Foundation defines it itself.
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 /// Where the panel goes on screen for each `PanelPosition`.
 ///
