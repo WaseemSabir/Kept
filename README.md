@@ -3,8 +3,8 @@
 A small, keyboard-first clipboard history for the Mac. Native (Swift,
 AppKit and SwiftUI), private, and open source.
 
-> **Early days.** Kept isn't ready for daily use yet. Today it is a menu bar
-> app with an empty panel; history, search and paste are being built now.
+> **Early days.** Kept hasn't had a release yet. History, search, paste,
+> pins and Settings work; onboarding polish and a first release come next.
 > See the [roadmap](docs/ROADMAP.md) for what's done and what's next.
 
 ## What it will do
@@ -47,7 +47,9 @@ make run    # builds and opens it
 ```
 
 Kept lives in the menu bar and has no Dock icon. Click its icon or press
-⇧⌘V to open the panel; right-click the icon for the menu.
+⇧⌘V to open the panel; right-click the icon for the menu. Open Kept again
+(from Finder or Spotlight) for Settings — the way back in if macOS hides the
+menu bar icon.
 
 - `UNIVERSAL=1 make app` builds for Apple silicon and Intel.
 - `SIGN_IDENTITY="Developer ID Application: …" make app` signs with your

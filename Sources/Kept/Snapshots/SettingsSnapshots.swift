@@ -3,7 +3,9 @@ import KeptCore
 import SwiftUI
 
 /// The Settings panes for `SnapshotRenderer`: each pane on its own, light
-/// and dark, plus the whole window (title bar and toolbar) for General.
+/// and dark, plus the whole window (title bar and toolbar) on General, in
+/// light mode only: offscreen, the selected toolbar item's glass draws as a
+/// white block in dark mode, which isn't what users see.
 ///
 /// Settings read a throwaway preferences domain, the sample history and
 /// stand-ins for the login item, the paste permission and the dialogs, so
@@ -45,7 +47,7 @@ enum SettingsSnapshots {
 
         // The real window, toolbar and all. Best effort: a window that
         // can't be drawn offscreen shouldn't cost the pane renders.
-        for appearance in SnapshotRenderer.Appearance.allCases {
+        for appearance in [SnapshotRenderer.Appearance.light] {
             do {
                 let png = try await withSettings(scenes[0], store: store, icons: icons) { model, defaults in
                     try await renderWindow(model: model, defaults: defaults, appearance: appearance)

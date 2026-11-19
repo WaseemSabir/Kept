@@ -57,10 +57,14 @@ Sources/
     Hotkeys/                  KeyboardShortcuts.Name definitions + HotkeyController
     Panel/                    FloatingPanel (NSPanel), PanelController, PanelViewModel, PanelKeyRouter
                               (+ KeyPress, PanelCommand), ClipDisplay, ClipFacts, PreviewLoader, Views/
-    MenuBar/                  StatusItemController, MenuBarIcon
-    Settings/                 SettingsWindowController, Views/ (panes)
+    MenuBar/                  StatusItemController, StatusMenu (+ StatusMenuState), MenuBarIcon
+    Settings/                 SettingsWindowController, SettingsWindow, SettingsTabViewController,
+                              SettingsModel, SettingsPane; LoginItemControlling / MainAppLoginItem
+                              (+ LoginItemStatus, LaunchAtLoginState); SettingsDialogPresenting /
+                              SettingsDialogs (+ ClearHistoryPrompt, ClearHistoryChoice); ExcludedApp,
+                              AboutInfo; Views/ (panes, SettingsForm, SettingsRow, SettingsNote)
     DesignSystem/             Theme (tokens), AdaptiveColor, Marker (highlighter), KeyCap, Hairline
-    Snapshots/                SnapshotRenderer, SampleHistory (`Kept --render-snapshots <dir>`)
+    Snapshots/                SnapshotRenderer, SettingsSnapshots, SampleHistory (`Kept --render-snapshots <dir>`)
     Support/                  IconCache, ThumbnailCache, AgeFormatter, RichTextDecoder, Log
 Tests/
   KeptCoreTests/              Swift Testing (`import Testing`); runs on Linux + macOS
@@ -137,7 +141,16 @@ Resources are **not** SwiftPM `resources:`; the bundle script copies them into
   near the start); ties by recency; an empty query lists pins first, then
   recent clips.
 - `Preferences` — `@MainActor`, `@Observable` wrapper over an injected
-  `UserDefaults`; every default and range lives in `PreferenceDefaults`.
+  `UserDefaults`; every default and range lives in `PreferenceDefaults`
+  (including the history sizes Settings offers). Excluded apps are edited
+  with `excludeApp`, `removeExcludedApps` and `restoreDefaultExcludedApps`
+  (bundle IDs compare without regard to case, as capture compares them).
+- `PanelPlacement` — pure: `frame(for:size:screens:mouse:statusItem:)` →
+  the panel's frame for a `PanelPosition` (center of the screen under the
+  pointer; top-left at the pointer; below the menu bar icon, leading edges
+  lined up, falling back to the center when the icon isn't showing),
+  clamped into the screen's visible frame with an 8 pt margin at the sides
+  and bottom when it fits; too big a panel keeps its top on screen.
 
 ### Storage layout
 
@@ -187,7 +200,9 @@ they are 10 minutes old; nothing when references can't be read).
   (all representations, or plain text only) with `.keptOwn`, `.source` and
   any privacy markers passed in.
 - **PanelController** — owns `FloatingPanel` (non-activating `NSPanel`,
-  `.statusBar` level, `canBecomeKey = true`), shows it with
+  `.statusBar` level, `canBecomeKey = true`), places it with
+  `PanelPlacement` (the setting for the shortcut, `.statusItem` for a click
+  on the menu bar icon), shows it with
   `orderFrontRegardless(); makeKey()` so the target app stays frontmost
   (≤120 ms fade, none under Reduce Motion), hides on `resignKey`. The panel
   sees every key-down first (unless an input method is composing):
@@ -197,17 +212,58 @@ they are 10 minutes old; nothing when references can't be read).
   directly, since an agent app has no Edit menu.
 - **PanelViewModel** — `@Observable`; holds query, filter, selection;
   derives visible clips via `ClipSearch`; carries out commands (move,
-  paste, pin, delete, clear with an inline confirm); refreshes when the
-  store changes. Footer labels follow `PasteOptions`. Views only render
-  it; caches (app icons, thumbnails) live in `PanelResources`.
+  paste, pin, move a pin, delete, clear with an inline confirm, open
+  Settings); refreshes when the store changes. A row's context menu runs
+  the same commands on the clicked clip (`perform(_:on:)`). Pins reorder
+  (⌥⌘↑ / ⌥⌘↓, or dragging, `dragPin(_:toRow:)`) only while the list shows
+  them in their own order (`canReorderPins`: no search, filter All or
+  Pinned), so a pin's row is its place. Footer labels follow
+  `PasteOptions`. Views only render it; caches (app icons, thumbnails)
+  live in `PanelResources`.
 - **PasteService** — see the paste flow below. Depends on protocols
   (`PermissionChecking`, `KeystrokePosting`, `KeyboardFocusChecking`,
   `PasteHintPresenting`), so tests fake the system.
 - **Snapshots** — `Kept --render-snapshots <dir>` fills a temporary store
-  with `SampleHistory`, renders the panel (and the copy-only hint) offscreen
-  at 2× in light and dark (opaque background: vibrancy doesn't draw
-  offscreen) and exits. CI runs it and uploads the PNGs as the
-  `panel-snapshots` artifact.
+  with `SampleHistory`, renders the panel, the copy-only hint and each
+  Settings pane offscreen at 2× in light and dark (opaque background:
+  vibrancy doesn't draw offscreen), draws the whole Settings window with
+  its toolbar (light only: the toolbar's selection glass doesn't draw
+  offscreen in dark mode), and exits. Settings render from a throwaway preferences
+  domain and stand-ins for the login item, permission and dialogs. CI
+  runs it and uploads the PNGs as the `panel-snapshots` artifact.
+- **Menu bar** — `StatusItemController` owns the `NSStatusItem`: a click
+  toggles the panel below the icon; a right-, ⌃- or ⌥-click attaches
+  `StatusMenu` and calls `performClick` (replaying the mouse event broke
+  on macOS 27), detaching it in `menuDidClose`. The menu is refreshed
+  from `StatusMenuState` (a value: pause title, ignore-next-copy state)
+  each time it opens; Open Kept and Pause capture show their recorded
+  shortcuts (`NSMenuItem.setShortcut(for:)`), and global shortcuts are
+  off while the menu tracks. "Clear history…" opens the panel with its
+  inline confirmation, so no alert activates Kept.
+- **Settings** — `SettingsWindowController` makes the window on first
+  use: `SettingsWindow` (handles ⌘W and ⌘Q, as Kept has no main menu)
+  around a `SettingsTabViewController` (`NSTabViewController`, toolbar
+  style, one `NSHostingController` per `SettingsPane`). The window has a
+  fixed width, takes the selected pane's preferred height with its top
+  edge fixed, and remembers the last pane (UserDefaults `settingsPane`;
+  `-settingsPane shortcuts` on the command line picks one). Showing it
+  activates Kept (`NSApp.activate()`); closing it yields activation back
+  to the app that was in front. `SettingsModel` (`@Observable`) binds the
+  panes to `Preferences` and adds what needs the system, behind
+  protocols: `LoginItemControlling` (`MainAppLoginItem` →
+  `SMAppService.mainApp`; status re-read whenever the window becomes key,
+  mapped to `LaunchAtLoginState`'s checkbox, note and Login Items button),
+  `PermissionChecking` (paste status and "Open Privacy & Security…"), and
+  `SettingsDialogPresenting` (`SettingsDialogs`: an `NSOpenPanel` in
+  /Applications for excluded apps, read with the user-selected read-only
+  entitlement; an `NSAlert` sheet built from `ClearHistoryPrompt`). The
+  history size applies live through `HistoryStore.setHistoryLimit`.
+  About reads the version and build from the bundle (`AboutInfo`), the one
+  place they live.
+- **Escape hatches** — macOS 26 can hide the menu bar icon with no API to
+  tell, so relaunching Kept (`applicationShouldHandleReopen`) opens
+  Settings, ⌘, in the panel opens it, and the global shortcut keeps
+  working.
 - **Hotkeys** — `KeyboardShortcuts` package (Carbon `RegisterEventHotKey`
   under the hood; no permission prompt; recorder UI for settings).
   `HotkeyController` listens for `.togglePanel` (⇧⌘V), `.pastePlainText`

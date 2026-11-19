@@ -62,7 +62,8 @@ paths, JSON) is set in SF Mono; prose stays in SF Pro. URLs show the host in
 ### Layout
 
 A single floating panel, ~720 × 460 pt, centered on the active screen
-(optionally at the cursor). Two panes under one search bar, a quiet footer.
+(or, per Settings, at the pointer or below the menu bar icon; always inside
+the screen's visible frame). Two panes under one search bar, a quiet footer.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -174,13 +175,49 @@ The full shortcut map lives in [RESEARCH.md](RESEARCH.md#keyboard-shortcut-map).
 The search field always has focus, so plain letters and ⌫ edit the query;
 every list action uses a modifier (⌘⌫ deletes a clip, ⌘P pins).
 
+In the panel, as built:
+
+| Keys | Action |
+|---|---|
+| ↑ ↓ · ⌃P ⌃N | Move the selection |
+| ⌘↑ ⌘↓ · Home End · PgUp PgDn | First, last, a page |
+| ⏎ · ⌥⏎ · ⌘⏎ | Paste · the other format · copy only |
+| ⌘1–⌘9 · ⌥⌘1–⌥⌘9 | Paste row N · in the other format |
+| ⌘P | Pin / unpin |
+| ⌥⌘↑ ⌥⌘↓ | Move the selected pin up / down (also: drag a pin) |
+| ⌘⌫ · ⌥⌘⌫ | Delete · clear unpinned clips (inline confirm) |
+| Tab ⇧Tab | Next / previous type filter |
+| ⌃U · Esc | Clear the search · clear, then close |
+| ⌘, | Settings |
+
+The footer keeps to the keys that act on the selection; moving pins and
+⌘, live here and in the row's context menu instead, so it stays quiet.
+Right-clicking a row offers Paste, Paste as plain text, Copy, Pin / Unpin
+and Delete, with their keys, named as the footer names them.
+
 ## Menu bar
 
 - Template glyph in the menu bar (monochrome, adapts to light/dark): the
   app icon's marked line (see [Icon](#icon)). While capture is paused the
   marker turns hollow.
-- Click → the same panel, anchored under the status item.
-- Right-click (or ⌥-click) → small menu: Pause capture, Settings…, Quit.
+- Click → the same panel, anchored under the status item (whatever the
+  panel position setting says; that's for the shortcut).
+- Right-click (or ⌃- or ⌥-click) → a small menu:
+
+```
+Open Kept                ⇧⌘V     (the recorded shortcut)
+──────────────────────
+Pause capture                    (Resume capture while paused)
+Ignore next copy                 (checked while armed; off while paused)
+Clear history…                   (opens the panel's inline confirmation)
+──────────────────────
+Settings…                ⌘,
+──────────────────────
+Quit Kept                ⌘Q
+```
+
+- Relaunching Kept, and ⌘, in the panel, open Settings: macOS 26 can hide
+  the icon, and those are the ways back in.
 
 ## Icon
 
@@ -224,8 +261,49 @@ Commit the SVG and the .icns together.
 
 ## Settings window
 
-Standard macOS settings window with a toolbar of panes (General, Shortcuts,
-Ignore, Advanced). System controls only; copy in sentence case, active voice.
+Standard macOS settings window with a toolbar of panes. System controls
+only; copy in sentence case, active voice.
+
+**As built (A3).** A titled window with a preference-style toolbar:
+General · Shortcuts · Privacy · About (SF Symbols gearshape, command,
+hand.raised, info.circle). The title follows the pane. Every pane is
+560 pt wide; the window takes each pane's height and keeps its top edge
+in place (animated, except under Reduce Motion). It opens on the last
+pane used.
+
+- Classic two-column layout: right-aligned labels with colons ("Startup:"),
+  controls beside them on the first line's baseline, a fixed label column
+  per pane, the form centered in the window, 20 pt above and below, 18 pt
+  between rows, 6 pt within one.
+- Explanations sit under their control in 11 pt secondary text, wrapped at
+  the 330 pt controls column and, under a checkbox, indented to its title.
+  They say what the control does, not what it is.
+- **General** — Startup: Open Kept at login (with an "Open Login Items…"
+  button and a note when macOS wants approval or registering failed, which
+  unsigned builds often do). History size: a menu of 100 / 250 / 500 /
+  1,000 / 2,500 / 5,000 / 10,000 clips. Pasting: Paste into the active app,
+  with a line saying what happens now and "Open Privacy & Security…" while
+  the permission is missing; Always paste as plain text. Open Kept: center
+  of the active screen / at the mouse pointer / below the menu bar icon.
+- **Shortcuts** — a recorder per global shortcut (Open Kept, Paste
+  clipboard as plain text, Pause or resume capture), each with what it
+  does; a closing note to include ⌘ or ⌃.
+- **Privacy** — Capture: Pause capture, Ignore copies from other devices,
+  Keep images, Keep files. Excluded apps: a bordered list (app icon and
+  name; "Not installed" and the bundle ID for missing apps) with borderless
+  + and − below it and "Restore defaults" on the right, as in System
+  Settings. History: "Clear history…" and a one-line summary ("13 clips in
+  your history, 2 of them pinned.").
+- **About** — the 96 pt icon, the name, "Version 0.1.0 (128)", one line of
+  what Kept is, the project link, the license; a quiet note only when the
+  history skipped unreadable clips or couldn't open.
+- Snapshots: `settings-<pane>-light/dark.png` for each pane (General also
+  with the approval and permission notes showing) and
+  `settings-window-light.png` with the title bar and toolbar.
+- Clearing from Settings asks with an alert (Settings is already active):
+  "Clear history" keeps pins and is the default, "Clear everything" is
+  marked destructive, "Cancel" answers Esc. With no pins there are only
+  "Clear history" and "Cancel".
 
 ## Writing
 

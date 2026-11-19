@@ -157,6 +157,7 @@ on macOS 15.0–15.1 (sandboxed apps) and in secure input fields. Require ⌘ or
 | ⌘1–⌘9 | Paste row N | CopyClip, Paste |
 | ⌥⌘1–⌥⌘9 | Paste row N as plain text | Paste uses ⇧⌘1–9 |
 | ⌘P | Pin / unpin | CopyClip ⇧⌘P, Raycast ⌘., Maccy ⌥P |
+| ⌥⌘↑ / ⌥⌘↓ | Move the selected pin up / down (drag works too) | Finder/Xcode ⌥⌘ arrows move items |
 | ⌘⌫ | Delete selected item | Finder "Move to Trash". Plain ⌫ edits the search, so it can only mean "delete item" when search is empty. **DESIGN.md's footer shows ⌫: reconcile.** |
 | ⌥⌘⌫ | Clear unpinned history (confirm) | Maccy |
 | ⌘Y | Preview (P1) | Finder Quick Look, Raycast. Space can't be used because it types. |

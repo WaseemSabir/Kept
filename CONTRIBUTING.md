@@ -17,16 +17,18 @@ make release                # macOS: universal zip, disk image and checksums in 
   its tests build. AppKit and SwiftUI code only compiles on macOS (Xcode 26 or
   later).
 - CI ([`ci.yml`](.github/workflows/ci.yml)) is the source of truth for the app:
-  on macOS it builds, runs every test, renders the panel snapshots, builds
-  `Kept.app` and launches it; on Linux it builds and tests `KeptCore`.
+  on macOS it builds, runs every test, renders the snapshots, builds
+  `Kept.app`, checks it carries the shortcut recorder's strings, and launches
+  it (reopening it must open Settings); on Linux it builds and tests
+  `KeptCore`.
 - Every local rebuild with an ad-hoc signature loses the Accessibility grant.
   Sign local builds with one persistent self-signed identity instead
   ([RELEASING.md](docs/RELEASING.md#local-builds-use-one-persistent-self-signed-identity)).
 
-## Panel snapshots
+## Snapshots
 
-The debug binary draws the panel in sample states, light and dark, for design
-review (macOS only):
+The debug binary draws the panel, the copy-only hint and each Settings pane in
+sample states, light and dark, for design review (macOS only):
 
 ```sh
 swift build && .build/debug/Kept --render-snapshots /tmp/kept-snapshots

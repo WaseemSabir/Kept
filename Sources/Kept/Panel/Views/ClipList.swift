@@ -55,6 +55,13 @@ struct ClipList: View {
                 // `.subviews` keeps the taps above working when the drag is off.
                 .simultaneousGesture(pinDrag(for: clip), including: canReorderPins && clip.isPinned ? .all : .subviews)
                 .contextMenu { ClipContextMenu(clip: clip, model: model) }
+                .accessibilityActions {
+                    // VoiceOver's way to reorder pins, besides ⌥⌘↑ / ⌥⌘↓.
+                    if canReorderPins && clip.isPinned {
+                        Button("Move up") { model.perform(.movePin(by: -1), on: clip) }
+                        Button("Move down") { model.perform(.movePin(by: 1), on: clip) }
+                    }
+                }
             }
         }
         .coordinateSpace(.named(Self.rowSpace))

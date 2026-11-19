@@ -17,13 +17,14 @@ Status: ☐ todo · ◐ in progress · ☑ done
 Notes:
 - Also done early: the ⇧⌘V hotkey (KeyboardShortcuts 3.x) and the `Theme` tokens; a thin
   `SQLiteDatabase`/`SQLiteStatement` wrapper with smoke tests (M1 grows it into the store).
-- Relaunching Kept shows the panel for now; M7 switches that to opening Settings.
+- Relaunching Kept showed the panel at first; A3 (M7) switched that to opening Settings.
 - `Package.resolved` is not tracked: SwiftPM on Linux deletes it because the only
   dependency is macOS-only. KeyboardShortcuts is pinned with `from: "3.1.0"`.
 - `build-app.sh` builds with `--build-system swiftbuild` and copies dependencies' resource
   bundles to `Contents/Resources`, where Swift Build's `Bundle.module` looks. (The native
   build system, still the default in Swift 6.3, looks only at the `.app` root and the
-  build folder.) M6 should confirm the KeyboardShortcuts recorder shows its strings.
+  build folder.) Confirmed in A3: CI checks the bundle holds the recorder's strings and opens
+  Settings on the Shortcuts pane in the bundled app with `.build` moved away.
 
 ## M1 — History store (core)
 - ☑ SQLite wrapper + schema + migrations (`clips`, `representations`)
@@ -114,21 +115,42 @@ Notes:
   every rebuild: TCC keys it to the code hash).
 
 ## M5 — Pins & cleanup
-- ◐ ⌘P pin/unpin, pinned section order, reorder pins (drag) — drag to reorder not yet
+- ☑ ⌘P pin/unpin, pinned section order, reorder pins (drag, or ⌥⌘↑ / ⌥⌘↓ on the selected pin)
 - ☑ ⌘⌫ delete, ⌥⌘⌫ clear unpinned (inline confirm bar, no modal)
-- ☐ Right-click context menu on rows
+- ☑ Right-click context menu on rows (paste, paste as plain text, copy, pin/unpin, delete)
 
 ## M6 — Settings
-- ☐ Settings window (owned `NSWindow`, toolbar panes)
-- ◐ General: launch at login (`SMAppService`), history size, paste directly vs copy only, always paste plain text, panel position — core `Preferences` done (M1)
-- ◐ Shortcuts: open Kept, paste clipboard as plain text (no default), pause capture (no default) — names (`togglePanel`, `pastePlainText`, `togglePause`) declared and handled (A2); recorder UI not yet
-- ◐ Privacy: pause, excluded apps (+/−, defaults), ignore Universal Clipboard, clear history — core `Preferences` and `HistoryStore.clearAll` done (M1)
+- ☑ Settings window (owned `NSWindow`, toolbar panes General · Shortcuts · Privacy · About)
+- ☑ General: launch at login (`SMAppService`), history size, paste directly vs copy only, always paste plain text, panel position (center / pointer / below the menu bar icon)
+- ☑ Shortcuts: open Kept, paste clipboard as plain text (no default), pause capture (no default) — `KeyboardShortcuts.Recorder`
+- ☑ Privacy: pause, excluded apps (+/−, defaults), ignore Universal Clipboard, keep images / files, clear history (keep pins or clear everything)
+- ☑ About: icon, version and build from the bundle, license, project link, history health note
 
 ## M7 — Menu bar & app identity
-- ◐ Left-click toggles panel; right-click / ⌥-click menu (Pause, Clear history, Settings…, Quit) — M0 has toggle and Quit
+- ☑ Left-click toggles panel (below the icon); right-click / ⌃-click / ⌥-click menu (Open Kept, Pause/Resume capture, Ignore next copy, Clear history…, Settings…, Quit)
 - ☑ Custom template menu bar glyph; dimmed when paused — glyph + paused variant drawn (`MenuBarIcon`); follows `Preferences.isPaused` (A2)
 - ☑ App icon — "the marked line" (`Resources/Icon/*.svg` → `scripts/make-icon.py` → `Resources/AppIcon.icns`)
-- ☐ Reopen (launching again) opens Settings — escape hatch if the menu bar icon is hidden
+- ☑ Reopen (launching again) opens Settings — escape hatch if the menu bar icon is hidden; ⌘, in the panel too
+
+Notes (M5–M7, A3):
+- Settings is an `NSTabViewController` in toolbar style hosting one SwiftUI view per pane, in
+  the classic two-column layout (right-aligned labels); the window keeps a fixed width, takes
+  each pane's height (top edge fixed) and remembers the last pane (`settingsPane` default).
+  Opening it activates Kept; closing it hands focus back to the app that was in front.
+- Launch at login reads `SMAppService.mainApp.status` whenever Settings becomes key; a failed
+  register (common for unsigned builds) or `.requiresApproval` shows a note and an
+  "Open Login Items…" button.
+- Panel placement is pure (`PanelPlacement` in core, tested on Linux) and clamped to the
+  screen's visible frame. Clicking the menu bar icon always opens the panel below it; the
+  setting decides where the shortcut opens it, falling back to the active screen's center
+  when the icon is hidden.
+- "Clear history…" in the menu opens the panel's inline confirmation (no alert, no
+  activation); the one in Settings asks with an alert and offers keeping pins or clearing
+  everything.
+- The menu shows the recorded shortcuts (`NSMenuItem.setShortcut(for:)`) and disables global
+  shortcuts while it tracks, so a queued hot key doesn't fire when it closes. It opens with
+  `performClick` on the button, not by replaying the mouse event (broken on macOS 27).
+- The version lives only in `Resources/Info.plist`; `KeptVersion` is gone.
 
 ## M8 — Images & files polish
 - ☑ TIFF → PNG re-encode, thumbnails (`CGImageSource`), image size cap
@@ -138,7 +160,8 @@ Notes:
 - ◐ First-paste permission sheet with version-aware copy; pasteboard privacy check (`accessBehavior`) — A2 shows a version-aware copy-only hint with an "Allow Kept to paste…" button on the first paste without access; no sheet or `accessBehavior` check yet
 - ◐ VoiceOver labels; Reduce Motion / Transparency / Increase Contrast — panel rows, filters and hints are labelled; no motion under Reduce Motion; stronger marker under Increase Contrast; needs a VoiceOver pass
 - ☑ Snapshot renders of the panel for design review in CI (`Kept --render-snapshots <dir>`, artifact `panel-snapshots`)
-- ☐ Release workflow (ad-hoc → signed → notarized when secrets exist), README screenshots
+- ☑ Release workflow (ad-hoc → signed → notarized when secrets exist) — `release.yml`, `scripts/package.sh`, docs/RELEASING.md
+- ☐ README screenshots
 
 ## Later (P2, only if it stays lean)
 - Edit / rename clips (⌘E / ⌘R) — turns pins into snippets

@@ -31,7 +31,7 @@ struct GeneralPane: View {
                 }
                 .labelsHidden()
                 .fixedSize()
-                SettingsNote(text: "The newest clips stay; older ones make room. Pinned clips don't count and always stay.")
+                SettingsNote(text: "Your newest clips stay. Lowering this deletes the oldest ones right away; pinned clips don't count and always stay.")
             }
 
             SettingsRow(label: "Pasting:", labelWidth: Self.labelWidth) {
