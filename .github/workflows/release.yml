@@ -1,0 +1,269 @@
+name: Release
+
+# A tag push (v1.2.0) builds, signs and packages Kept, then attaches the zip,
+# the disk image and their checksums to a draft GitHub release. Run it by hand
+# for a dry run: the files are kept as workflow artifacts and no release is made.
+#
+# Signing depends on which repository secrets exist (docs/RELEASING.md):
+#   none                                              → ad-hoc signature
+#   MACOS_CERTIFICATE_P12, MACOS_CERTIFICATE_PASSWORD → Developer ID signature
+#   … and NOTARY_KEY_ID, NOTARY_ISSUER_ID, NOTARY_KEY_P8 → notarized and stapled
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to stamp for a dry run, e.g. 0.1.0-dev (default: Resources/Info.plist)"
+        required: false
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  package:
+    name: macOS · build, sign, package
+    runs-on: macos-latest
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.package.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the build number counts commits
+          persist-credentials: false
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      - name: Resolve the version
+        id: version
+        env:
+          EVENT: ${{ github.event_name }}
+          TAG: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          plist="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
+          core="$(sed -n 's/.*static let current = "\(.*\)".*/\1/p' Sources/KeptCore/Support/KeptVersion.swift 2>/dev/null || true)"
+          if [[ "$EVENT" == "push" ]]; then
+            version="${TAG#v}"
+            if [[ "$version" != "$plist" ]]; then
+              echo "::error file=Resources/Info.plist::Tag $TAG doesn't match CFBundleShortVersionString ($plist). Bump the version, commit, and tag that commit."
+              exit 1
+            fi
+            if [[ -n "$core" && "$core" != "$plist" ]]; then
+              echo "::error file=Sources/KeptCore/Support/KeptVersion.swift::KeptVersion.current ($core) doesn't match Resources/Info.plist ($plist)."
+              exit 1
+            fi
+          else
+            version="${INPUT_VERSION:-$plist}"
+            if [[ -n "$core" && "$core" != "$plist" ]]; then
+              echo "::warning::KeptVersion.current ($core) doesn't match Resources/Info.plist ($plist)."
+            fi
+          fi
+          echo "Version: $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Import the signing certificate
+        id: signing
+        env:
+          CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          if [[ -z "$CERTIFICATE_P12" ]]; then
+            echo "No MACOS_CERTIFICATE_P12 secret: Kept gets an ad-hoc signature."
+            echo "identity=-" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/kept-signing.keychain-db"
+          certificate="$RUNNER_TEMP/kept-signing.p12"
+          keychain_password="$(openssl rand -base64 24)"
+          echo "::add-mask::$keychain_password"
+
+          printf '%s' "$CERTIFICATE_P12" | base64 --decode > "$certificate"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$certificate" -k "$keychain" -f pkcs12 -P "$CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security > /dev/null
+          rm -f "$certificate"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
+            -k "$keychain_password" "$keychain" > /dev/null
+          # Search the new keychain first, then the existing ones.
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+
+          identities="$(security find-identity -v -p codesigning "$keychain")"
+          hash="$(awk '/"Developer ID Application: /{print $2; exit}' <<< "$identities")"
+          name="$(awk -F'"' '/"Developer ID Application: /{print $2; exit}' <<< "$identities")"
+          if [[ -z "$hash" ]]; then
+            echo "::error::MACOS_CERTIFICATE_P12 holds no valid Developer ID Application identity."
+            exit 1
+          fi
+          echo "Signing as $name"
+          echo "identity=$hash" >> "$GITHUB_OUTPUT"
+
+      - name: Build, sign and package
+        id: package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SIGN_IDENTITY: ${{ steps.signing.outputs.identity }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+        run: |
+          if [[ "$SIGN_IDENTITY" == "-" || -z "$NOTARY_KEY_ID" || -z "$NOTARY_ISSUER_ID" || -z "$NOTARY_KEY_P8" ]]; then
+            if [[ -n "$NOTARY_KEY_ID$NOTARY_ISSUER_ID$NOTARY_KEY_P8" ]]; then
+              echo "::warning::Not notarizing: that needs the certificate secrets and all of NOTARY_KEY_ID, NOTARY_ISSUER_ID and NOTARY_KEY_P8."
+            fi
+            export NOTARIZE=0
+          fi
+          ./scripts/package.sh
+
+      - name: Verify the packages
+        env:
+          ZIP: ${{ steps.package.outputs.zip }}
+          DMG: ${{ steps.package.outputs.dmg }}
+          CHECKSUMS: ${{ steps.package.outputs.checksums }}
+          VERSION: ${{ steps.package.outputs.version }}
+          BUILD: ${{ steps.package.outputs.build }}
+          SIGNATURE: ${{ steps.package.outputs.signature }}
+          NOTARIZED: ${{ steps.package.outputs.notarized }}
+        run: |
+          (cd "$(dirname "$CHECKSUMS")" && shasum -a 256 -c "$(basename "$CHECKSUMS")")
+
+          # The app as users get it from the zip.
+          check="$RUNNER_TEMP/check"
+          rm -rf "$check" && mkdir -p "$check"
+          ditto -x -k "$ZIP" "$check"
+          app="$check/Kept.app"
+          binary="$app/Contents/MacOS/Kept"
+          archs="$(lipo -archs "$binary")"
+          echo "lipo -archs: $archs"
+          lipo "$binary" -verify_arch arm64 x86_64
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --display --verbose=2 "$app"
+          plutil -p "$app/Contents/Info.plist" | grep -E 'CFBundle(ShortVersionString|Version)'
+          if [[ "$NOTARIZED" == "true" ]]; then
+            xcrun stapler validate "$app"
+            spctl --assess --type execute --verbose=2 "$app"
+          fi
+
+          # The app as users get it from the disk image.
+          mount="$RUNNER_TEMP/kept-dmg"
+          mkdir -p "$mount"
+          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$mount"
+          trap 'hdiutil detach "$mount" -force > /dev/null 2>&1 || true' EXIT
+          ls -l "$mount"
+          [[ -L "$mount/Applications" ]] || { echo "::error::The disk image has no Applications link"; exit 1; }
+          codesign --verify --deep --strict --verbose=2 "$mount/Kept.app"
+          cmp "$mount/Kept.app/Contents/MacOS/Kept" "$binary"
+          hdiutil detach "$mount"
+          trap - EXIT
+
+          # Launch each slice for a few seconds (x86_64 under Rosetta, if installed).
+          smoke() {
+            local arch="$1" log="$RUNNER_TEMP/kept-$1.log" pid status=0
+            arch "-$arch" "$binary" > "$log" 2>&1 &
+            pid=$!
+            sleep 6
+            if ! kill -0 "$pid" 2> /dev/null; then
+              wait "$pid" || status=$?
+              echo "::error::Kept ($arch) exited during launch (status $status)"
+              cat "$log"
+              return 1
+            fi
+            kill "$pid" 2> /dev/null || true
+            wait "$pid" 2> /dev/null || true
+            echo "Kept ($arch) launched and kept running"
+          }
+          smoke arm64
+          if arch -x86_64 /usr/bin/true 2> /dev/null; then
+            smoke x86_64
+          else
+            echo "::notice::Rosetta isn't installed; skipped launching the x86_64 slice"
+          fi
+
+          {
+            echo "### Kept $VERSION ($BUILD)"
+            echo
+            echo "- Architectures: $archs"
+            echo "- Signature: $SIGNATURE"
+            echo "- Notarized: $NOTARIZED"
+            echo
+            echo '```'
+            cat "$CHECKSUMS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Kept-${{ steps.package.outputs.version }}
+          path: |
+            ${{ steps.package.outputs.zip }}
+            ${{ steps.package.outputs.dmg }}
+            ${{ steps.package.outputs.checksums }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove the signing keychain
+        if: always()
+        run: |
+          keychain="$RUNNER_TEMP/kept-signing.keychain-db"
+          if [[ -f "$keychain" ]]; then
+            security delete-keychain "$keychain"
+            echo "Removed the signing keychain"
+          fi
+          rm -f "$RUNNER_TEMP/kept-signing.p12"
+
+  release:
+    name: Draft GitHub release
+    needs: package
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: Kept-${{ needs.package.outputs.version }}
+          path: dist
+
+      - name: Create or update the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          files=("dist/Kept-$VERSION.zip" "dist/Kept-$VERSION.dmg" "dist/Kept-$VERSION.sha256")
+          ls -l "${files[@]}"
+          if draft="$(gh release view "$TAG" --json isDraft --jq .isDraft 2> /dev/null)"; then
+            if [[ "$draft" != "true" ]]; then
+              echo "::error::Release $TAG is already published; not changing it."
+              exit 1
+            fi
+            echo "Replacing the files on the draft release $TAG"
+            gh release upload "$TAG" "${files[@]}" --clobber
+          else
+            gh release create "$TAG" "${files[@]}" --draft --verify-tag \
+              --title "Kept $VERSION" --generate-notes
+          fi

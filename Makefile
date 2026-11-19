@@ -1,4 +1,4 @@
-.PHONY: build test app run clean
+.PHONY: build test app run release clean
 
 # Linux: KeptCore only. macOS: everything.
 build:
@@ -13,6 +13,12 @@ app:
 
 run: app
 	open dist/Kept.app
+
+# macOS: universal dist/Kept-<version>.zip and .dmg plus SHA-256 checksums.
+# Signs with SIGN_IDENTITY and notarizes when notary credentials are set
+# (docs/RELEASING.md).
+release:
+	./scripts/package.sh
 
 clean:
 	swift package clean
