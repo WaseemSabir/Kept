@@ -148,6 +148,30 @@ enum Theme {
         static let hintScreenOffset: CGFloat = 72
     }
 
+    /// The Settings window: system controls in the classic two-column
+    /// layout (right-aligned labels, controls beside them), one fixed width.
+    @MainActor
+    enum SettingsLayout {
+        /// Every pane is this wide; only the height changes.
+        static let width: CGFloat = 560
+        static let verticalPadding: CGFloat = 20
+        static let rowSpacing: CGFloat = 18
+        /// Between a row's label and its controls.
+        static let labelGap: CGFloat = 8
+        /// Between controls (and their notes) in one row.
+        static let controlSpacing: CGFloat = 6
+        /// The controls column; notes wrap at this width.
+        static let contentWidth: CGFloat = 330
+        /// Lines a note up with the title of the checkbox above it.
+        static let checkboxIndent: CGFloat = 20
+        /// Explanations under controls: small and secondary.
+        static let note = Font.system(size: 11)
+        static let excludedAppsHeight: CGFloat = 168
+        static let excludedAppIconSize: CGFloat = 18
+        static let aboutIconSize: CGFloat = 96
+        static let aboutName = Font.system(size: 20, weight: .semibold)
+    }
+
     /// Only the panel and the copy-only hint fade, and not under Reduce
     /// Motion.
     @MainActor

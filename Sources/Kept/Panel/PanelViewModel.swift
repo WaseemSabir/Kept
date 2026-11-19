@@ -56,6 +56,8 @@ final class PanelViewModel {
     @ObservationIgnored var hintAnchor: @MainActor () -> CGRect? = { nil }
     /// Rows a PgUp / PgDn moves.
     @ObservationIgnored var pageSize = 10
+    /// Opens Settings (⌘,).
+    @ObservationIgnored var onOpenSettings: @MainActor () -> Void = {}
 
     private let paster: (any ClipPasting)?
     private let pasteOptions: @MainActor () -> PasteOptions
@@ -125,6 +127,12 @@ final class PanelViewModel {
         pasteOptions().pasteDirectly ? "Copy" : nil
     }
     var pinActionTitle: String { selectedClip?.isPinned == true ? "Unpin" : "Pin" }
+
+    /// Whether pins can be dragged or moved with ⌥⌘↑ / ⌥⌘↓ here: the list
+    /// shows them in their own order, so a pin's row is its place.
+    var canReorderPins: Bool {
+        !isSearching && (filter == .all || filter == .pinned)
+    }
 
     /// The row where unpinned clips start below the pinned section, when the
     /// list shows both (an empty query lists pins first).
@@ -252,6 +260,8 @@ final class PanelViewModel {
             if results.indices.contains(row) { paste(results[row], .paste(alternate: alternate)) }
         case .togglePin:
             togglePin()
+        case .movePin(let offset):
+            moveSelectedPin(by: offset)
         case .delete:
             deleteSelection()
         case .requestClearUnpinned:
@@ -264,10 +274,28 @@ final class PanelViewModel {
             cycleFilter(by: 1)
         case .previousFilter:
             cycleFilter(by: -1)
+        case .openSettings:
+            onOpenSettings()
         case .edit:
             return false
         }
         return true
+    }
+
+    /// Carries out `command` on `clip`, selecting it first: the row's
+    /// context menu.
+    func perform(_ command: PanelCommand, on clip: Clip) {
+        select(clip)
+        perform(command)
+    }
+
+    /// Moves the pinned `clip` being dragged to the pinned row under the
+    /// pointer and selects it. Rows below the pinned section count as its
+    /// last place.
+    func dragPin(_ clip: Clip, toRow row: Int) {
+        guard canReorderPins, clip.isPinned else { return }
+        if selectedID != clip.id { select(clip) }
+        movePin(clip.id, toIndex: row)
     }
 
     /// Selects the row at `index`, clamped to the list.
@@ -366,6 +394,28 @@ final class PanelViewModel {
             }
         } catch {
             report(clip.isPinned ? "Couldn't unpin that clip." : "Couldn't pin that clip.", error)
+        }
+        refresh(selecting: .keep)
+    }
+
+    /// ⌥⌘↑ / ⌥⌘↓: the selected pin swaps places with its neighbor.
+    private func moveSelectedPin(by offset: Int) {
+        guard canReorderPins, let store, let clip = selectedClip, clip.isPinned,
+              let index = store.pinned.firstIndex(where: { $0.id == clip.id })
+        else { return }
+        movePin(clip.id, toIndex: index + offset)
+    }
+
+    /// Moves a pin to `index` in the pinned section (clamped); it stays
+    /// selected if it was.
+    private func movePin(_ id: UUID, toIndex index: Int) {
+        guard let store, let from = store.pinned.firstIndex(where: { $0.id == id }) else { return }
+        let target = min(max(index, 0), store.pinned.count - 1)
+        guard target != from else { return }
+        do {
+            try store.movePin(id, toIndex: target)
+        } catch {
+            report("Couldn't move that pin.", error)
         }
         refresh(selecting: .keep)
     }

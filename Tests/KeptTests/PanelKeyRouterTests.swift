@@ -75,6 +75,19 @@ struct PanelKeyRouterTests {
         #expect(command(32, .control, "u") == .clearQuery)
     }
 
+    @Test("⌥⌘↑ / ⌥⌘↓ move the selected pin; ⌘, opens Settings")
+    func pinMovesAndSettings() {
+        #expect(command(Key.upArrow, [.command, .option]) == .movePin(by: -1))
+        #expect(command(Key.downArrow, [.command, .option]) == .movePin(by: 1))
+        #expect(command(Key.upArrow, .option) == nil)
+        #expect(command(Key.downArrow, [.command, .shift]) == nil)
+        #expect(command(43, .command, ",") == .openSettings)
+        #expect(command(43, [], ",") == nil)
+        #expect(command(43, [.command, .shift], ",") == nil)
+        #expect(PanelCommand.movePin(by: 1).pasteRequest == nil)
+        #expect(PanelCommand.openSettings.pasteRequest == nil)
+    }
+
     @Test("Delete needs ⌘; ⌥⌘⌫ asks to clear the history")
     func deletion() {
         #expect(command(Key.delete) == nil)

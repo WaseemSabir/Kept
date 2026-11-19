@@ -8,7 +8,8 @@ import SwiftUI
 /// Every state renders at 2× in light and dark mode, from a temporary history
 /// filled with `SampleHistory`. Vibrancy doesn't draw offscreen, so the panel
 /// sits on the opaque window background instead. The copy-only hint renders
-/// the same way, as a card on a desktop-gray canvas.
+/// the same way, as a card on a desktop-gray canvas, and so do the Settings
+/// panes (`SettingsSnapshots`).
 @MainActor
 enum SnapshotRenderer {
     static let flag = "--render-snapshots"
@@ -90,7 +91,7 @@ enum SnapshotRenderer {
         }
     }
 
-    private enum Appearance: String, CaseIterable {
+    enum Appearance: String, CaseIterable {
         case light
         case dark
 
@@ -149,6 +150,7 @@ enum SnapshotRenderer {
                 written += 1
             }
         }
+        written += try await SettingsSnapshots.render(to: directory, store: sample, icons: icons)
         return written
     }
 
@@ -170,7 +172,7 @@ enum SnapshotRenderer {
     /// `cacheDisplay`, so AppKit-backed views (the search field, scroll views)
     /// draw as they do on screen. `size` `nil` means the view's own ideal
     /// size. `prepare` runs once the view has appeared.
-    private static func renderInWindow(
+    static func renderInWindow(
         _ view: some View,
         size fixedSize: CGSize?,
         appearance: Appearance,
@@ -203,8 +205,13 @@ enum SnapshotRenderer {
         try await Task.sleep(for: .milliseconds(250))
         hostingView.layoutSubtreeIfNeeded()
         hostingView.displayIfNeeded()
+        return try png(of: hostingView)
+    }
 
-        guard let bitmap = NSBitmapImageRep(
+    /// `view` and its subviews drawn at 2× with `cacheDisplay`, as PNG data.
+    static func png(of view: NSView) throws -> Data {
+        let size = view.bounds.size
+        guard size.width > 0, size.height > 0, let bitmap = NSBitmapImageRep(
             bitmapDataPlanes: nil,
             pixelsWide: Int(size.width * 2),
             pixelsHigh: Int(size.height * 2),
@@ -215,16 +222,16 @@ enum SnapshotRenderer {
             colorSpaceName: .deviceRGB,
             bytesPerRow: 0,
             bitsPerPixel: 0
-        ) else { throw RenderError(description: "No bitmap for the window render") }
+        ) else { throw RenderError(description: "No bitmap for a \(size.width) × \(size.height) render") }
         bitmap.size = size
-        hostingView.cacheDisplay(in: hostingView.bounds, to: bitmap)
+        view.cacheDisplay(in: view.bounds, to: bitmap)
         guard let png = bitmap.representation(using: .png, properties: [:]) else {
-            throw RenderError(description: "Couldn't encode the window render")
+            throw RenderError(description: "Couldn't encode the render")
         }
         return png
     }
 
-    private struct RenderError: Error, CustomStringConvertible {
+    struct RenderError: Error, CustomStringConvertible {
         let description: String
     }
 }

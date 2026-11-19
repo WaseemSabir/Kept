@@ -48,9 +48,10 @@ jobs:
       - name: Test
         run: swift test
 
-      # The unsandboxed debug binary draws the panel in sample states, light
-      # and dark, for design review. Download them from the run's artifacts.
-      - name: Render panel snapshots
+      # The unsandboxed debug binary draws the panel, the copy-only hint and
+      # the Settings panes in sample states, light and dark, for design
+      # review. Download them from the run's artifacts.
+      - name: Render snapshots
         timeout-minutes: 5
         run: .build/debug/Kept --render-snapshots "$RUNNER_TEMP/snapshots"
 
@@ -65,10 +66,41 @@ jobs:
       - name: Build Kept.app
         run: make app
 
+      # The shortcut recorders in Settings load KeyboardShortcuts' strings
+      # through Bundle.module, which looks in Contents/Resources inside an app.
+      - name: Check bundled resources
+        run: |
+          bundle="dist/Kept.app/Contents/Resources/KeyboardShortcuts_KeyboardShortcuts.bundle"
+          if [[ ! -d "$bundle" ]]; then
+            echo "::error::Kept.app has no KeyboardShortcuts resource bundle"
+            ls -la dist/Kept.app/Contents/Resources
+            exit 1
+          fi
+          strings="$(find "$bundle" -path '*/en.lproj/Localizable.strings' -print -quit)"
+          if [[ -z "$strings" ]]; then
+            echo "::error::The KeyboardShortcuts bundle has no en.lproj/Localizable.strings"
+            find "$bundle" -maxdepth 4
+            exit 1
+          fi
+          if ! plutil -p "$strings" | grep -q 'Record Shortcut'; then
+            echo "::error::$strings doesn't hold the recorder's strings"
+            plutil -p "$strings" || cat "$strings"
+            exit 1
+          fi
+          echo "Recorder strings: ${strings#dist/}"
+
       - name: Launch smoke test
         run: |
           log="$RUNNER_TEMP/kept.log"
-          dist/Kept.app/Contents/MacOS/Kept >"$log" 2>&1 &
+          # Hide the build folder for the test: Bundle.module falls back to it,
+          # and a user's Mac has none, so resources must come from the app.
+          mv .build "$RUNNER_TEMP/spm-build"
+          trap 'pkill -f "Kept.app/Contents/MacOS/Kept" || true; mv "$RUNNER_TEMP/spm-build" .build' EXIT
+
+          # OS_ACTIVITY_DT_MODE copies Kept's log to stderr. `-settingsPane
+          # shortcuts` (an argument-domain default) makes Settings open on the
+          # Shortcuts pane, whose recorders load KeyboardShortcuts' strings.
+          OS_ACTIVITY_DT_MODE=YES dist/Kept.app/Contents/MacOS/Kept -settingsPane shortcuts >"$log" 2>&1 &
           pid=$!
           sleep 5
           if ! kill -0 "$pid" 2>/dev/null; then
@@ -78,19 +110,28 @@ jobs:
             exit 1
           fi
 
-          # Opening the running app again shows the panel (reopen event).
-          open dist/Kept.app || echo "::warning::Could not send a reopen event to Kept"
-          sleep 2
+          # Opening the running app again opens Settings (the reopen event),
+          # the way back in when macOS hides the menu bar icon.
+          open dist/Kept.app
+          sleep 4
           if ! kill -0 "$pid" 2>/dev/null; then
-            echo "::error::Kept exited after showing the panel"
+            status=0; wait "$pid" || status=$?
+            echo "::error::Kept exited after opening Settings (status $status)"
+            cat "$log"
+            exit 1
+          fi
+          if ! grep -q "Showing Settings: shortcuts" "$log" &&
+             ! log show --last 2m --style compact \
+                 --predicate 'subsystem == "app.kept.Kept" AND category == "settings"' 2>/dev/null |
+               grep -q "Showing Settings: shortcuts"; then
+            echo "::error::Reopening Kept didn't open Settings on the Shortcuts pane"
             cat "$log"
             exit 1
           fi
 
-          echo "Kept is running (pid $pid)"
+          echo "Kept is running (pid $pid) with Settings open on Shortcuts"
           kill "$pid"
           wait "$pid" 2>/dev/null || true
-          pkill -f "Kept.app/Contents/MacOS/Kept" || true
           cat "$log"
 
   linux:

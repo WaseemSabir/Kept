@@ -10,6 +10,7 @@ final class AppEnvironment {
     /// why, and nothing is captured.
     let history: HistoryStore?
     let panelController: PanelController
+    let settingsController: SettingsWindowController
     private let monitor: PasteboardMonitor
     private let captureService: CaptureService?
     /// `nil` when the history couldn't be opened.
@@ -61,11 +62,64 @@ final class AppEnvironment {
             appName: { icons.appName(for: $0) },
             capturePaused: { preferences.isPaused }
         )
-        let panelController = PanelController(model: model, resources: resources)
+        let panelController = PanelController(
+            model: model,
+            resources: resources,
+            position: { preferences.panelPosition }
+        )
         panelController.willShow = { [hintController] in hintController.dismiss() }
         self.panelController = panelController
-        statusItemController = StatusItemController(togglePanel: { [panelController] in panelController.toggle() })
+
+        let dialogs = SettingsDialogs()
+        let settingsModel = SettingsModel(
+            preferences: preferences,
+            store: opened.store,
+            loginItem: MainAppLoginItem(),
+            permission: permission,
+            onboarding: PasteOnboarding(),
+            dialogs: dialogs,
+            icons: icons,
+            about: AboutInfo(bundle: .main),
+            appIcon: NSApplication.shared.applicationIconImage ?? NSImage()
+        )
+        let settingsController = SettingsWindowController(model: settingsModel, dialogs: dialogs)
+        self.settingsController = settingsController
+
+        let showSettings: @MainActor () -> Void = { [panelController, settingsController] in
+            panelController.hide()
+            settingsController.show()
+        }
+        model.onOpenSettings = showSettings
+
+        let isHistoryAvailable = opened.store != nil
+        let statusItemController = StatusItemController(
+            // A click on the icon opens the panel right below it.
+            togglePanel: { [panelController] in panelController.toggle(at: .statusItem) },
+            menuActions: StatusMenu.Actions(
+                openPanel: { [panelController] in panelController.show(at: .statusItem) },
+                togglePause: { [preferences] in preferences.isPaused.toggle() },
+                ignoreNextCopy: { [monitor] in monitor.ignoreNextCopy() },
+                clearHistory: { [panelController] in panelController.showClearConfirmation(at: .statusItem) },
+                openSettings: showSettings
+            ),
+            menuState: { [preferences, monitor] in
+                StatusMenuState(
+                    isPaused: preferences.isPaused,
+                    isIgnoringNextCopy: monitor.isIgnoringNextCopy,
+                    isHistoryAvailable: isHistoryAvailable
+                )
+            }
+        )
+        self.statusItemController = statusItemController
+        panelController.statusItemFrame = { [weak statusItemController] in statusItemController?.buttonFrameOnScreen }
         hotkeyController = HotkeyController()
+    }
+
+    /// Opens Settings, putting the panel away first. Also what relaunching
+    /// Kept does, so Kept stays reachable if macOS hides its menu bar icon.
+    func showSettings(pane: SettingsPane? = nil) {
+        panelController.hide()
+        settingsController.show(pane: pane)
     }
 
     /// Starts listening for Kept's global shortcuts and for copies.

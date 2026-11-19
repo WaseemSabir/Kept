@@ -76,6 +76,7 @@ enum PanelKeyRouter {
         switch modifiers {
         case []: .moveSelection(by: step)
         case .command: jump
+        case [.command, .option]: .movePin(by: step)
         default: nil
         }
     }
@@ -100,6 +101,7 @@ enum PanelKeyRouter {
             case "v": return .edit(.paste)
             case "a": return .edit(.selectAll)
             case "z": return .edit(.undo)
+            case ",": return .openSettings
             default: return nil
             }
         case [.command, .shift]:

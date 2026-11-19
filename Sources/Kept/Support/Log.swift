@@ -10,4 +10,5 @@ enum Log {
     static let panel = Logger(subsystem: subsystem, category: "panel")
     static let paste = Logger(subsystem: subsystem, category: "paste")
     static let snapshots = Logger(subsystem: subsystem, category: "snapshots")
+    static let settings = Logger(subsystem: subsystem, category: "settings")
 }

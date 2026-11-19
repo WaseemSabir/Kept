@@ -10,10 +10,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.environment = environment
     }
 
-    /// Launching Kept again while it's running shows the panel, so Kept stays
-    /// reachable even if its menu bar item is hidden.
+    /// Launching Kept again while it's running opens Settings: the way back
+    /// in if macOS hides the menu bar icon (System Settings › Menu Bar can,
+    /// and no API tells an app).
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        environment?.panelController.show()
+        environment?.showSettings()
         return false
     }
 

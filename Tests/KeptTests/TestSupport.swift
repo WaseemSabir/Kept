@@ -128,3 +128,27 @@ func encodedImage(width: Int, height: Int, type: String) throws -> Data {
     }
     return output as Data
 }
+
+/// A minimal app bundle, `<name>.app` holding only `Contents/Info.plist`,
+/// in `directory`.
+func makeAppBundle(
+    named name: String,
+    bundleID: String,
+    version: String = "1.0",
+    build: String = "1",
+    in directory: URL
+) throws -> URL {
+    let app = directory.appendingPathComponent("\(name).app", isDirectory: true)
+    let contents = app.appendingPathComponent("Contents", isDirectory: true)
+    try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+    let info: [String: Any] = [
+        "CFBundleIdentifier": bundleID,
+        "CFBundleName": name,
+        "CFBundlePackageType": "APPL",
+        "CFBundleShortVersionString": version,
+        "CFBundleVersion": build,
+    ]
+    let data = try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
+    try data.write(to: contents.appendingPathComponent("Info.plist"))
+    return app
+}

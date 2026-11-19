@@ -1,4 +1,5 @@
 import AppKit
+import KeptCore
 import SwiftUI
 
 /// Owns the floating panel: builds its content, places it, shows or hides it
@@ -7,11 +8,20 @@ import SwiftUI
 final class PanelController {
     private let panel: FloatingPanel
     private let model: PanelViewModel
+    /// Where the panel opens when nothing says otherwise (the setting).
+    private let position: @MainActor () -> PanelPosition
     /// Called just before the panel shows (to put away a copy-only hint).
     var willShow: (@MainActor () -> Void)?
+    /// The menu bar icon's frame on screen, or `nil` while it isn't showing.
+    var statusItemFrame: @MainActor () -> CGRect? = { nil }
 
-    init(model: PanelViewModel, resources: PanelResources) {
+    init(
+        model: PanelViewModel,
+        resources: PanelResources,
+        position: @escaping @MainActor () -> PanelPosition = { .activeScreenCenter }
+    ) {
         self.model = model
+        self.position = position
         panel = FloatingPanel(contentRect: NSRect(origin: .zero, size: Theme.Layout.panelSize))
         panel.contentView = Self.makeContentView(model: model, resources: resources)
         panel.onResignKey = { [weak self] in self?.hide() }
@@ -23,21 +33,24 @@ final class PanelController {
 
     var isVisible: Bool { panel.isVisible }
 
-    func toggle() {
+    /// Shows the panel, or hides it if it's showing.
+    /// - Parameter position: where to open it; `nil` for the setting.
+    func toggle(at position: PanelPosition? = nil) {
         if isVisible {
             hide()
         } else {
-            show()
+            show(at: position)
         }
     }
 
-    /// Resets the panel (empty search, first clip), then shows it centered on
-    /// the screen under the mouse and makes it key. `orderFrontRegardless` +
-    /// `makeKey` (rather than activating Kept) keeps the user's app frontmost.
-    func show() {
+    /// Resets the panel (empty search, first clip), places it and makes it
+    /// key. `orderFrontRegardless` + `makeKey` (rather than activating Kept)
+    /// keeps the user's app frontmost.
+    /// - Parameter position: where to open it; `nil` for the setting.
+    func show(at position: PanelPosition? = nil) {
         willShow?()
         model.prepareForShow()
-        center(on: screenUnderMouse())
+        place(at: position ?? self.position())
 
         let animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         panel.alphaValue = animates ? 0 : 1
@@ -56,6 +69,14 @@ final class PanelController {
         guard panel.isVisible else { return }
         panel.orderOut(nil)
         panel.alphaValue = 1
+    }
+
+    /// Opens the panel with the inline "clear unpinned clips?" confirmation,
+    /// for "Clear history…" in the menu bar menu: no alert, so the app the
+    /// user is working in stays active.
+    func showClearConfirmation(at position: PanelPosition? = nil) {
+        show(at: position)
+        model.perform(.requestClearUnpinned)
     }
 
     // MARK: Keys
@@ -94,21 +115,24 @@ final class PanelController {
         return max(1, Int(listHeight / Theme.Layout.rowHeight))
     }
 
-    private func screenUnderMouse() -> NSScreen? {
-        let location = NSEvent.mouseLocation
-        return NSScreen.screens.first { NSMouseInRect(location, $0.frame, false) } ?? NSScreen.main
-    }
-
-    private func center(on screen: NSScreen?) {
-        guard let visibleFrame = screen?.visibleFrame else {
+    /// Moves the panel to `position` (see `PanelPlacement`): the center of
+    /// the screen under the pointer, at the pointer, or below the menu bar
+    /// icon, always inside the screen's visible frame.
+    private func place(at position: PanelPosition) {
+        let screens = NSScreen.screens.map {
+            PanelPlacement.Screen(frame: $0.frame, visibleFrame: $0.visibleFrame)
+        }
+        guard let frame = PanelPlacement.frame(
+            for: position,
+            size: panel.frame.size,
+            screens: screens,
+            mouse: NSEvent.mouseLocation,
+            statusItem: statusItemFrame()
+        ) else {
             panel.center()
             return
         }
-        let size = panel.frame.size
-        panel.setFrameOrigin(NSPoint(
-            x: (visibleFrame.midX - size.width / 2).rounded(),
-            y: (visibleFrame.midY - size.height / 2).rounded()
-        ))
+        panel.setFrameOrigin(frame.origin)
     }
 
     // MARK: Content

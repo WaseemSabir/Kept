@@ -18,6 +18,9 @@ enum PanelCommand: Equatable, Sendable {
     case activateRow(Int, alternate: Bool)
     /// ⌘P.
     case togglePin
+    /// ⌥⌘↑ / ⌥⌘↓: move the selected pin up (negative) or down in the
+    /// pinned section.
+    case movePin(by: Int)
     /// ⌘⌫.
     case delete
     /// ⌥⌘⌫: ask to clear every unpinned clip.
@@ -29,6 +32,8 @@ enum PanelCommand: Equatable, Sendable {
     /// Tab / ⇧Tab.
     case nextFilter
     case previousFilter
+    /// ⌘,: open Settings.
+    case openSettings
     /// ⌘X, ⌘C, ⌘V, ⌘A, ⌘Z, ⇧⌘Z in the search field. Kept has no Edit menu
     /// (it's an agent app), so the panel sends these actions itself.
     case edit(TextEditAction)
