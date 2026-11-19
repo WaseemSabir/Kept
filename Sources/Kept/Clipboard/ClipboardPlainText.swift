@@ -31,7 +31,9 @@ enum ClipboardPlainText {
         guard !texts.isEmpty else { return nil }
 
         let types = Set((pasteboard.types ?? []).map { PasteboardType(rawValue: $0.rawValue) })
-        let source = types.contains(.source) ? pasteboard.string(forType: NSPasteboard.PasteboardType(PasteboardType.source)) : nil
+        let source = types.contains(.source)
+            ? pasteboard.string(forType: NSPasteboard.PasteboardType(PasteboardType.source))
+            : nil
         return Conversion(
             items: texts.map { PasteboardItem([ClipRepresentation(.string, string: $0)]) },
             sourceBundleID: source,

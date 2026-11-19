@@ -8,11 +8,11 @@ public struct HistoryLimits: Sendable, Hashable {
 
     /// The default `inlineThreshold`. `ClipBuilder` pre-hashes
     /// representations above it, since they become blob files.
-    static let defaultInlineThreshold = 64 * 1024
+    public static let defaultInlineThreshold = 64 * 1024
 
     public init(
         historyLimit: Int = PreferenceDefaults.historyLimit,
-        inlineThreshold: Int = 64 * 1024
+        inlineThreshold: Int = HistoryLimits.defaultInlineThreshold
     ) {
         self.historyLimit = historyLimit
         self.inlineThreshold = inlineThreshold
