@@ -98,7 +98,7 @@ struct HistoryPayloadTests {
         let (draft, hash) = try imageDraft()
         let stager = store.stager
 
-        let staged = try await Task.detached { try stager.stage(draft) }.value
+        let staged = try await stager.stageInBackground(draft)
         #expect(try blobFiles() == [hash])
         #expect(staged.draft.items.first?.representations.first?.sha256 == hash)
 
@@ -186,6 +186,37 @@ struct HistoryPayloadTests {
         let clip = try store.record(staged, at: .at(1))
         #expect(try blobFiles() == [hash])
         #expect(try store.representations(for: clip.id) == draft.items)
+    }
+
+    @Test("A staging that fails partway hands back what it wrote, and recording deletes it")
+    func partialStage() throws {
+        defer { removeTemporaryDirectory(directory) }
+        let store = try makeStore()
+        let first = String(repeating: "written ", count: 20)
+        let second = #"{\rtf1 "# + String(repeating: "never written ", count: 20) + "}"
+        let draft = try draft(ClipRepresentation(.string, string: first), ClipRepresentation(.rtf, string: second))
+        let firstHash = SHA256.hexDigest(of: Data(first.utf8))
+        let secondHash = SHA256.hexDigest(of: Data(second.utf8))
+        // A folder where the second file goes makes its write fail, as a
+        // full disk would.
+        let blocker = blobDirectory.appendingPathComponent(secondHash)
+        try FileManager.default.createDirectory(at: blocker, withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: blocker.appendingPathComponent("inside"))
+
+        do {
+            _ = try store.stager.stage(draft)
+            Issue.record("Staging should have failed")
+        } catch {
+            #expect(error.written.blobHashes == [firstHash])
+            #expect(try blobFiles() == [firstHash, secondHash])
+            store.discard(error.written)
+        }
+        #expect(try blobFiles() == [secondHash])
+
+        #expect(throws: HistoryStoreError.self) { try store.record(draft, at: .at(1)) }
+        #expect(try blobFiles() == [secondHash])
+        #expect(store.recent.isEmpty)
+        #expect(!store.stager.blobs.reservations.isReserved(firstHash))
     }
 
     @Test("Counts clears")

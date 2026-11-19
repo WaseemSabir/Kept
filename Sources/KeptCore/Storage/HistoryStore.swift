@@ -184,7 +184,14 @@ public final class HistoryStore {
     /// stages them off it first and records the `StagedClip` instead.
     @discardableResult
     public func record(_ draft: ClipDraft, at date: Date = Date()) throws(HistoryStoreError) -> Clip {
-        try record(stager.stage(draft), at: date)
+        let staged: StagedClip
+        do {
+            staged = try stager.stage(draft)
+        } catch {
+            discard(error.written)
+            throw error.error
+        }
+        return try record(staged, at: date)
     }
 
     /// Records a clip whose blob files `stager` already wrote, as
