@@ -24,23 +24,19 @@ enum ClipboardPlainText {
         let texts = (pasteboard.pasteboardItems ?? []).compactMap { item -> String? in
             let offered = Set(item.types.map { PasteboardType(rawValue: $0.rawValue) })
             let representations = PasteboardItem.textTypes.filter(offered.contains).compactMap { type in
-                item.data(forType: nativeType(type)).map { ClipRepresentation(type, $0) }
+                item.data(forType: NSPasteboard.PasteboardType(type)).map { ClipRepresentation(type, $0) }
             }
             return PasteboardItem(representations).plainText
         }
         guard !texts.isEmpty else { return nil }
 
         let types = Set((pasteboard.types ?? []).map { PasteboardType(rawValue: $0.rawValue) })
-        let source = types.contains(.source) ? pasteboard.string(forType: nativeType(.source)) : nil
+        let source = types.contains(.source) ? pasteboard.string(forType: NSPasteboard.PasteboardType(PasteboardType.source)) : nil
         return Conversion(
             items: texts.map { PasteboardItem([ClipRepresentation(.string, string: $0)]) },
             sourceBundleID: source,
             // Remote-clipboard and Kept's own marker don't carry over.
             markers: CapturePolicy.privacyMarkers.filter { types.contains($0) }
         )
-    }
-
-    private static func nativeType(_ type: PasteboardType) -> NSPasteboard.PasteboardType {
-        NSPasteboard.PasteboardType(type.rawValue)
     }
 }

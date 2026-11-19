@@ -50,7 +50,7 @@ struct PasteboardReader {
             return .ignored(reason)
         }
         let marker = types.contains(.source)
-            ? pasteboard.string(forType: NSPasteboard.PasteboardType(PasteboardType.source.rawValue))
+            ? pasteboard.string(forType: NSPasteboard.PasteboardType(PasteboardType.source))
             : nil
         let source = PasteboardSnapshot.sourceBundleID(marker: marker, frontmost: frontmostBundleID)
         if source != frontmostBundleID,

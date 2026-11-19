@@ -26,8 +26,6 @@ final class PasteHintController: PasteHintPresenting {
         self.openSettings = openSettings
     }
 
-    var isVisible: Bool { panel?.isVisible ?? false }
-
     func show(_ hint: PastePlan.Hint, anchor: CGRect?) {
         lifecycle?.cancel()
         isHovering = false
@@ -156,13 +154,6 @@ final class PasteHintController: PasteHintPresenting {
         if hint == .allowPasting {
             message += " " + PasteHintCopy.permissionDetail(osMajorVersion: osMajorVersion)
         }
-        NSAccessibility.post(
-            element: NSApplication.shared,
-            notification: .announcementRequested,
-            userInfo: [
-                .announcement: message,
-                .priority: NSAccessibilityPriorityLevel.high.rawValue,
-            ]
-        )
+        VoiceOver.announce(message)
     }
 }

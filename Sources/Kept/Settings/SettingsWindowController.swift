@@ -34,8 +34,6 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         super.init()
     }
 
-    var isVisible: Bool { window?.isVisible ?? false }
-
     /// Shows Settings (on `pane`, or the last pane shown) and activates Kept.
     func show(pane: SettingsPane? = nil) {
         let window = prepareWindow(pane: pane)

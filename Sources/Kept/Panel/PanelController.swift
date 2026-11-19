@@ -92,14 +92,7 @@ final class PanelController {
     /// nothing when VoiceOver is off.
     private func announce(_ message: String) {
         guard NSWorkspace.shared.isVoiceOverEnabled, !message.isEmpty else { return }
-        NSAccessibility.post(
-            element: NSApplication.shared,
-            notification: .announcementRequested,
-            userInfo: [
-                .announcement: message,
-                .priority: NSAccessibilityPriorityLevel.high.rawValue,
-            ]
-        )
+        VoiceOver.announce(message)
     }
 
     // MARK: Keys

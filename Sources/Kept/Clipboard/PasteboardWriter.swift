@@ -25,25 +25,21 @@ struct PasteboardWriter {
             .map { item -> NSPasteboardItem in
                 let object = NSPasteboardItem()
                 for representation in item.representations {
-                    object.setData(representation.data, forType: Self.nativeType(representation.type))
+                    object.setData(representation.data, forType: NSPasteboard.PasteboardType(representation.type))
                 }
                 return object
             }
         guard let first = objects.first else { return nil }
         // A non-empty value: some pasteboard readers drop empty types.
         for marker in [PasteboardType.keptOwn] + markers {
-            first.setString("1", forType: Self.nativeType(marker))
+            first.setString("1", forType: NSPasteboard.PasteboardType(marker))
         }
         if let sourceBundleID, !sourceBundleID.isEmpty {
-            first.setString(sourceBundleID, forType: Self.nativeType(.source))
+            first.setString(sourceBundleID, forType: NSPasteboard.PasteboardType(PasteboardType.source))
         }
 
         pasteboard.clearContents()
         guard pasteboard.writeObjects(objects) else { return nil }
         return pasteboard.changeCount
-    }
-
-    private static func nativeType(_ type: PasteboardType) -> NSPasteboard.PasteboardType {
-        NSPasteboard.PasteboardType(type.rawValue)
     }
 }

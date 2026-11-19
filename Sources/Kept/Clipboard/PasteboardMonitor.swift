@@ -48,8 +48,6 @@ final class PasteboardMonitor {
         lastChangeCount = pasteboard.changeCount
     }
 
-    var isRunning: Bool { timer != nil }
-
     /// Starts polling. Changes made while the monitor was stopped are skipped.
     func start() {
         guard timer == nil else { return }
