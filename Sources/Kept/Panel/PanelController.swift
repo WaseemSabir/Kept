@@ -28,7 +28,10 @@ final class PanelController {
         panel.keyHandler = { [weak self] press in self?.handle(press) ?? false }
         model.onDismiss = { [weak self] in self?.hide() }
         model.hintAnchor = { [weak self] in self?.panel.frame }
+        model.announce = { [weak self] message in self?.announce(message) }
         model.pageSize = Self.visibleRowCount - 1
+        // Hidden until first shown: copies until then aren't searched.
+        model.panelDidHide()
     }
 
     var isVisible: Bool { panel.isVisible }
@@ -51,6 +54,11 @@ final class PanelController {
         willShow?()
         model.prepareForShow()
         place(at: position ?? self.position())
+        // Closing Settings with no other app to return to hides Kept, and a
+        // hidden app's windows don't appear until it's unhidden.
+        if NSApplication.shared.isHidden {
+            NSApplication.shared.unhideWithoutActivation()
+        }
 
         let animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         panel.alphaValue = animates ? 0 : 1
@@ -69,6 +77,7 @@ final class PanelController {
         guard panel.isVisible else { return }
         panel.orderOut(nil)
         panel.alphaValue = 1
+        model.panelDidHide()
     }
 
     /// Opens the panel with the inline "clear unpinned clips?" confirmation,
@@ -77,6 +86,20 @@ final class PanelController {
     func showClearConfirmation(at position: PanelPosition? = nil) {
         show(at: position)
         model.perform(.requestClearUnpinned)
+    }
+
+    /// Speaks `message` to VoiceOver (the selected clip as it changes);
+    /// nothing when VoiceOver is off.
+    private func announce(_ message: String) {
+        guard NSWorkspace.shared.isVoiceOverEnabled, !message.isEmpty else { return }
+        NSAccessibility.post(
+            element: NSApplication.shared,
+            notification: .announcementRequested,
+            userInfo: [
+                .announcement: message,
+                .priority: NSAccessibilityPriorityLevel.high.rawValue,
+            ]
+        )
     }
 
     // MARK: Keys

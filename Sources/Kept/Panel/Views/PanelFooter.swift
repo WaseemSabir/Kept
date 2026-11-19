@@ -15,7 +15,10 @@ struct PanelFooter: View {
                     KeyHint(keys: "⌘⏎", label: copyOnlyTitle)
                 }
                 KeyHint(keys: "⌘P", label: model.pinActionTitle)
-                KeyHint(keys: "⌘⌫", label: "Delete")
+                // With a query, ⌘⌫ edits the search instead.
+                if model.canDeleteWithKey {
+                    KeyHint(keys: "⌘⌫", label: "Delete")
+                }
             } else if model.isSearching {
                 KeyHint(keys: "esc", label: "Clear search")
             } else {
@@ -54,13 +57,14 @@ private struct PausedIndicator: View {
 
 /// Replaces the footer while asking to clear the history. Inline rather
 /// than an alert, which would activate Kept and pull focus from the app the
-/// user is working in.
+/// user is working in. Only ⌥⌘⌫ again (or the button) clears: ⏎ is the
+/// paste key, too easily pressed by habit.
 struct ClearConfirmationBar: View {
     let model: PanelViewModel
 
     var body: some View {
         HStack(spacing: 14) {
-            Text(message)
+            Text(model.clearConfirmationMessage)
                 .font(Theme.Typography.footerKey)
                 .foregroundStyle(Theme.Colors.ink)
                 .lineLimit(1)
@@ -68,7 +72,7 @@ struct ClearConfirmationBar: View {
             Button {
                 model.confirmClearUnpinned()
             } label: {
-                KeyHint(keys: "⏎", label: "Clear history")
+                KeyHint(keys: "⌥⌘⌫", label: "Clear history")
             }
             .buttonStyle(.plain)
             .focusable(false)
@@ -82,11 +86,5 @@ struct ClearConfirmationBar: View {
         }
         .padding(.horizontal, Theme.Spacing.gutter)
         .frame(height: Theme.Layout.footerHeight)
-    }
-
-    private var message: String {
-        let count = model.unpinnedCount
-        let clips = count == 1 ? "1 unpinned clip" : "\(count.formatted()) unpinned clips"
-        return "Clear \(clips)? Pinned clips stay."
     }
 }

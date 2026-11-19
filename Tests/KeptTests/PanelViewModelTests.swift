@@ -257,23 +257,39 @@ struct PanelViewModelTests {
         }
     }
 
-    @Test("Clearing unpinned clips asks first and keeps pins")
+    @Test("Clearing unpinned clips asks first, clears only on ⌥⌘⌫ again, and keeps pins")
     func clearUnpinned() throws {
         defer { removeTemporaryDirectory(directory) }
-        let (model, store) = try makeModel(["one", "two", "three"])
+        let paster = RecordingPaster()
+        let (model, store) = try makeModel(["one", "two", "three"], paster: paster)
         model.select(index: 2)
         model.perform(.togglePin)
 
         model.perform(.requestClearUnpinned)
         #expect(model.isConfirmingClear)
         #expect(model.unpinnedCount == 2)
-        // Anything but Return backs out without deleting.
-        model.perform(.delete)
+        #expect(model.clearConfirmationMessage == "Clear 2 unpinned clips? Pinned clips stay.")
+
+        // ⏎ is the paste key: pressed by habit it neither clears nor pastes.
+        for key in [PanelCommand.activate(alternate: false), .activate(alternate: true), .copyOnly, .activateRow(0, alternate: false)] {
+            #expect(model.perform(key))
+            #expect(model.isConfirmingClear)
+        }
+        #expect(store.recent.count == 2)
+        #expect(paster.pastes.isEmpty)
+
+        // Esc backs out without deleting; so does any other key.
+        model.perform(.cancel)
+        #expect(!model.isConfirmingClear)
+        #expect(store.recent.count == 2)
+        model.perform(.requestClearUnpinned)
+        model.perform(.moveSelection(by: 1))
         #expect(!model.isConfirmingClear)
         #expect(store.recent.count == 2)
 
+        // ⌥⌘⌫ again clears.
         model.perform(.requestClearUnpinned)
-        model.perform(.activate(alternate: false))
+        model.perform(.requestClearUnpinned)
         #expect(!model.isConfirmingClear)
         #expect(store.recent.isEmpty)
         #expect(titles(model) == ["three"])
@@ -281,6 +297,40 @@ struct PanelViewModelTests {
         model.perform(.requestClearUnpinned)
         #expect(!model.isConfirmingClear)
         #expect(model.notice == "There are no unpinned clips to clear.")
+    }
+
+    @Test("The bar's Clear button clears and its Cancel button backs out")
+    func clearBarButtons() throws {
+        defer { removeTemporaryDirectory(directory) }
+        let (model, store) = try makeModel(["one", "two"])
+        model.perform(.requestClearUnpinned)
+        model.cancelClearUnpinned()
+        #expect(!model.isConfirmingClear)
+        #expect(store.recent.count == 2)
+        model.perform(.requestClearUnpinned)
+        model.confirmClearUnpinned()
+        #expect(store.recent.isEmpty)
+    }
+
+    @Test("⌘⌫ deletes the clip only while the search is empty; with a query it edits the field")
+    func deleteKeyNeedsEmptyQuery() throws {
+        defer { removeTemporaryDirectory(directory) }
+        let (model, store) = try makeModel(["apple pie", "apple tart", "cherry"])
+        model.query = "apple"
+        #expect(!model.canDeleteWithKey)
+        // Not handled: the key goes on to the search field.
+        #expect(model.perform(.delete) == false)
+        #expect(store.recent.count == 3)
+
+        // The context menu's Delete still works while searching.
+        let tart = try #require(model.results.first { $0.title == "apple tart" })
+        model.perform(.delete, on: tart)
+        #expect(store.recent.map(\.title) == ["apple pie", "cherry"])
+
+        model.query = ""
+        #expect(model.canDeleteWithKey)
+        #expect(model.perform(.delete))
+        #expect(store.recent.map(\.title) == ["cherry"])
     }
 
     @Test("Typing dismisses the clear confirmation")
@@ -298,6 +348,113 @@ struct PanelViewModelTests {
         let (model, _) = try makeModel(["one"])
         #expect(model.perform(.edit(.paste)) == false)
         #expect(model.perform(.moveSelection(by: 1)) == true)
+    }
+
+    // MARK: Scrolling
+
+    @Test("The scroll token moves with the selected row, not only the selected clip")
+    func scrollToken() throws {
+        defer { removeTemporaryDirectory(directory) }
+        let (model, store) = try makeModel(["one", "two", "three"])
+        var token = model.scrollToken
+
+        func moved() -> Bool {
+            defer { token = model.scrollToken }
+            return model.scrollToken != token
+        }
+
+        model.perform(.moveSelection(by: 1))
+        #expect(moved())
+        model.perform(.selectFirst)
+        #expect(moved())
+        // Already at the top: nothing moved, nothing to scroll.
+        model.perform(.selectFirst)
+        #expect(!moved())
+
+        // Pinning "three" moves it to row 0 while it stays selected.
+        model.perform(.selectLast)
+        #expect(moved())
+        model.perform(.togglePin)
+        #expect(model.selectedClip?.title == "three")
+        #expect(model.selectedIndex == 0)
+        #expect(moved())
+
+        // Unpinning moves it back to the top of the history: same row 0, no scroll.
+        model.perform(.togglePin)
+        #expect(model.selectedIndex == 0)
+        #expect(!moved())
+
+        // A new copy pushes the selected clip down a row.
+        try store.record(try textDraft("zero"), at: Date().addingTimeInterval(3_600))
+        model.refresh()
+        #expect(model.selectedClip?.title == "three")
+        #expect(model.selectedIndex == 1)
+        #expect(moved())
+
+        // Refreshing with nothing changed doesn't scroll.
+        model.refresh()
+        #expect(!moved())
+    }
+
+    @Test("Moving a pin with ⌥⌘↓ scrolls with it")
+    func scrollTokenFollowsPinMoves() throws {
+        defer { removeTemporaryDirectory(directory) }
+        let (model, store) = try makeModel(["one", "two", "three"])
+        for clip in store.recent.reversed() { try store.pin(clip.id) }
+        model.refresh(selecting: .first)
+        let token = model.scrollToken
+        model.perform(.movePin(by: 1))
+        #expect(model.selectedIndex == 1)
+        #expect(model.scrollToken != token)
+    }
+
+    // MARK: Hidden panel
+
+    @Test("While hidden the panel drops its query and doesn't search; opening refreshes")
+    func hiddenPanelWaits() throws {
+        defer { removeTemporaryDirectory(directory) }
+        let (model, store) = try makeModel(["one", "two"])
+        model.query = "two"
+        model.perform(.requestClearUnpinned)
+        model.panelDidHide()
+        #expect(model.query.isEmpty)
+        #expect(model.filter == .all)
+        #expect(!model.isConfirmingClear)
+        // The search for "two" stays as it was: nothing ran while hidden.
+        #expect(titles(model) == ["two"])
+
+        try store.record(try textDraft("zero"), at: .at(100))
+        model.refresh()
+        #expect(titles(model) == ["two"])
+
+        model.prepareForShow()
+        #expect(titles(model) == ["zero", "one", "two"])
+        #expect(model.selectedIndex == 0)
+    }
+
+    // MARK: VoiceOver
+
+    @Test("Moving the selection announces the clip and its place in the list")
+    func announcesSelection() throws {
+        defer { removeTemporaryDirectory(directory) }
+        let (model, _) = try makeModel(["one", "two", "three"])
+        var spoken: [String] = []
+        model.announce = { spoken.append($0) }
+
+        model.perform(.moveSelection(by: 1))
+        #expect(spoken.count == 1)
+        #expect(spoken.last?.hasPrefix("Text, two, ") == true)
+        #expect(spoken.last?.hasSuffix(". 2 of 3.") == true)
+
+        model.perform(.togglePin)
+        #expect(spoken.last?.contains(", pinned. 1 of 3.") == true)
+
+        // Typing isn't interrupted by announcements.
+        model.query = "t"
+        #expect(spoken.count == 2)
+
+        model.perform(.requestClearUnpinned)
+        #expect(spoken.last?.hasPrefix("Clear 2 unpinned clips?") == true)
     }
 
     // MARK: History changes

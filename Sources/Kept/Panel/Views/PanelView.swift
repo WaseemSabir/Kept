@@ -6,6 +6,7 @@ struct PanelView: View {
     let model: PanelViewModel
     let resources: PanelResources
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,6 +22,13 @@ struct PanelView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background {
+            // The material turns opaque under Reduce Transparency; the
+            // panel doesn't count on it and draws the window background.
+            if reduceTransparency {
+                Theme.Colors.panelBackground.ignoresSafeArea()
+            }
+        }
         .modifier(PanelAppearEffect(trigger: model.presentationCount, isEnabled: !reduceMotion))
     }
 

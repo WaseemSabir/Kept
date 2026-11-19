@@ -23,10 +23,13 @@ enum Theme {
         static let wash = Color.primary.opacity(0.06)
 
         /// The highlighter drawn behind the selected row's text and the
-        /// active filter. Never a solid control fill.
+        /// active filter. Never a solid control fill. In dark mode it's the
+        /// same bright yellow as in light mode, a little stronger than a
+        /// glaze, so it reads as a marker rather than a brown band; white
+        /// text on it stays near 5:1 on the dark material.
         static let marker = AdaptiveColor(
             light: sRGB(0xFFD84D, opacity: 0.6),
-            dark: sRGB(0xE8B73A, opacity: 0.3),
+            dark: sRGB(0xFFD84D, opacity: 0.36),
             lightIncreasedContrast: sRGB(0xFFD84D, opacity: 0.95),
             darkIncreasedContrast: sRGB(0xE8B73A, opacity: 0.5)
         )
@@ -35,12 +38,13 @@ enum Theme {
             light: sRGB(0xF5C400),
             dark: sRGB(0xE8B73A)
         )
-        /// Pin glyph and active filter text.
+        /// The active filter's text, on the marker. Pale in dark mode, so
+        /// it holds its contrast on the brighter marker.
         static let markerInk = AdaptiveColor(
             light: sRGB(0x8A6A00),
-            dark: sRGB(0xF2C94C),
+            dark: sRGB(0xFFE59A),
             lightIncreasedContrast: sRGB(0x5C4600),
-            darkIncreasedContrast: sRGB(0xFFE08A)
+            darkIncreasedContrast: sRGB(0xFFF4CC)
         )
 
         static func sRGB(_ hex: UInt32, opacity: Double = 1) -> Color {
@@ -66,9 +70,14 @@ enum Theme {
         static let filterToken = Font.system(size: 12)
         /// Clip summary in the list.
         static let rowTitle = Font.system(size: 13)
+        /// The words of a row's title that match the search: the same size
+        /// and ink, a weight heavier. No color, no underline.
+        static let rowTitleMatch = Font.system(size: 13, weight: .semibold)
         /// Code-like clips in the list (SF Mono, a point smaller to match
         /// the proportional text's color).
         static let rowCode = Font.system(size: 12, design: .monospaced)
+        /// Matching words in a code-like row.
+        static let rowCodeMatch = Font.system(size: 12, weight: .semibold, design: .monospaced)
         /// Source app, age.
         static let rowMeta = Font.system(size: 11)
         /// Quick-paste numbers 1–9.

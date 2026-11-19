@@ -21,9 +21,10 @@ enum PanelCommand: Equatable, Sendable {
     /// ⌥⌘↑ / ⌥⌘↓: move the selected pin up (negative) or down in the
     /// pinned section.
     case movePin(by: Int)
-    /// ⌘⌫.
+    /// ⌘⌫ with an empty search (with a query the key edits the field), or
+    /// Delete in a row's context menu.
     case delete
-    /// ⌥⌘⌫: ask to clear every unpinned clip.
+    /// ⌥⌘⌫: ask to clear every unpinned clip; pressed again, clear them.
     case requestClearUnpinned
     /// ⌃U.
     case clearQuery
@@ -58,4 +59,15 @@ enum TextEditAction: Equatable, Sendable {
     case selectAll
     case undo
     case redo
+}
+
+extension PanelCommand {
+    /// Commands after which VoiceOver hears which clip is selected: the
+    /// ones that move the selection or change the selected row.
+    var movesThroughList: Bool {
+        switch self {
+        case .moveSelection, .movePage, .selectFirst, .selectLast, .togglePin, .movePin, .delete: true
+        default: false
+        }
+    }
 }

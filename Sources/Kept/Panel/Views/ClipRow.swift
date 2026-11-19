@@ -3,24 +3,31 @@ import SwiftUI
 
 /// One 34 pt row: quick-paste number, the clip drawn by kind, the clip's
 /// age and the source app's icon.
+///
+/// The row reads the selection itself, so moving it only updates the rows
+/// on screen. To VoiceOver a row is one element: a sentence describing the
+/// clip, selected or not, that pastes when activated.
 struct ClipRow: View {
     let clip: Clip
+    let model: PanelViewModel
     /// 1–9 for the first nine rows (⌘1–⌘9).
     let number: Int?
-    let isSelected: Bool
     /// Draws the hairline between the pinned section and the rest.
     let startsSection: Bool
+    /// The query's words, set in a heavier weight where they match.
+    let matchTokens: [String]
     let now: Date
     let resources: PanelResources
 
     var body: some View {
+        let isSelected = model.selectedID == clip.id
         HStack(spacing: 0) {
             Text(number.map(String.init) ?? "")
                 .font(Theme.Typography.index)
                 .foregroundStyle(Theme.Colors.inkFaint)
                 .frame(width: Theme.Layout.leadingColumnWidth, alignment: .leading)
                 .accessibilityHidden(true)
-            ClipSummary(clip: clip, isMarked: isSelected, resources: resources)
+            ClipSummary(clip: clip, isMarked: isSelected, matchTokens: matchTokens, resources: resources)
                 .layoutPriority(1)
             Spacer(minLength: Theme.Spacing.gutter)
             // The age sits against the icon, and the icons form one column
@@ -45,9 +52,17 @@ struct ClipRow: View {
             }
         }
         .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
-        .accessibilityValue(clip.isPinned ? "Pinned" : "")
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(model.accessibilityLabel(for: clip))
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        // The default action pastes, like ⏎ or a double-click.
+        .accessibilityAction { model.activate(clip) }
+        .accessibilityAction(named: model.primaryActionTitle) { model.activate(clip) }
+        .accessibilityAction(named: model.alternateActionTitle) {
+            model.perform(.activate(alternate: true), on: clip)
+        }
+        .accessibilityAction(named: clip.isPinned ? "Unpin" : "Pin") { model.perform(.togglePin, on: clip) }
+        .accessibilityAction(named: "Delete") { model.perform(.delete, on: clip) }
     }
 
     @ViewBuilder

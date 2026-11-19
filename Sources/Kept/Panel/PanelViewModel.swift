@@ -35,6 +35,12 @@ final class PanelViewModel {
     /// The clips the list shows, best first.
     private(set) var results: [Clip] = []
     private(set) var selectedID: UUID?
+    /// The selected clip's row in `results`.
+    private(set) var selectedIndex: Int?
+    /// Goes up whenever the selected row moves: another clip is selected, or
+    /// the selected clip changes rows (pinned, unpinned, a pin moved, a new
+    /// copy above it). The list scrolls the selection into view on each one.
+    private(set) var scrollToken = 0
     /// Whether the inline "clear unpinned clips?" bar is showing.
     private(set) var isConfirmingClear = false
     /// A short message about something that went wrong, shown in the footer.
@@ -58,6 +64,13 @@ final class PanelViewModel {
     @ObservationIgnored var pageSize = 10
     /// Opens Settings (⌘,).
     @ObservationIgnored var onOpenSettings: @MainActor () -> Void = {}
+    /// Speaks a sentence to VoiceOver. The search field keeps the keyboard,
+    /// so moving through the list is announced rather than focused.
+    @ObservationIgnored var announce: @MainActor (String) -> Void = { _ in }
+
+    /// The panel is off screen: history changes wait until it opens again,
+    /// so a new copy never runs a search nobody sees.
+    @ObservationIgnored private var isHidden = false
 
     private let paster: (any ClipPasting)?
     private let pasteOptions: @MainActor () -> PasteOptions
@@ -91,11 +104,6 @@ final class PanelViewModel {
 
     // MARK: Derived state
 
-    var selectedIndex: Int? {
-        guard let selectedID else { return nil }
-        return results.firstIndex { $0.id == selectedID }
-    }
-
     var selectedClip: Clip? {
         selectedIndex.map { results[$0] }
     }
@@ -104,8 +112,23 @@ final class PanelViewModel {
 
     var isSearching: Bool { !query.allSatisfy(\.isWhitespace) }
 
+    /// ⌘⌫ deletes the selected clip only while the search field is empty;
+    /// with a query it deletes to the start of the line, as in any text
+    /// field.
+    var canDeleteWithKey: Bool { query.isEmpty && selectedClip != nil }
+
+    /// The query's words, for marking matches in the rows.
+    var matchTokens: [String] { MatchHighlighter.tokens(of: query) }
+
     /// Unpinned clips in the whole history, for the clear confirmation.
     var unpinnedCount: Int { store?.recent.count ?? 0 }
+
+    /// "Clear 13 unpinned clips? Pinned clips stay."
+    var clearConfirmationMessage: String {
+        let count = unpinnedCount
+        let clips = count == 1 ? "1 unpinned clip" : "\(count.formatted()) unpinned clips"
+        return "Clear \(clips)? Pinned clips stay."
+    }
 
     /// What ⏎ does: "Paste", or "Copy" when pasting directly is off; "as
     /// plain text" when that's the default.
@@ -216,10 +239,18 @@ final class PanelViewModel {
         return ClipFacts.facts(for: clip, preview: preview, appName: name, now: now)
     }
 
+    /// The row's accessibility label (see `ClipAccessibility`).
+    func accessibilityLabel(for clip: Clip) -> String {
+        var name: String?
+        if let bundleID = clip.sourceBundleID { name = appName(bundleID) }
+        return ClipAccessibility.label(for: clip, appName: name, now: now)
+    }
+
     // MARK: Intents
 
     /// Resets the panel for a fresh look: empty query, all clips, first row.
     func prepareForShow() {
+        isHidden = false
         isConfirmingClear = false
         notice = nil
         now = Date()
@@ -229,21 +260,51 @@ final class PanelViewModel {
         presentationCount += 1
     }
 
-    /// Carries out `command`. Returns `false` for commands the panel doesn't
-    /// handle itself (text editing), so the key goes on to the search field.
+    /// Carries out the command for a key press. Returns `false` for keys the
+    /// panel leaves to the search field (text editing, and ⌘⌫ while there's
+    /// a query).
     @discardableResult
     func perform(_ command: PanelCommand) -> Bool {
-        if case .edit = command { return false }
+        switch command {
+        case .edit:
+            return false
+        case .delete where !query.isEmpty:
+            // ⌘⌫ in a text field deletes to the start of the line; only an
+            // empty search makes it mean "delete this clip".
+            return false
+        default:
+            break
+        }
         if isConfirmingClear {
-            // ⏎ confirms; any other command (Esc included) backs out.
-            if command == .activate(alternate: false) {
-                confirmClearUnpinned()
-            } else {
-                isConfirmingClear = false
-            }
+            confirmationKey(command)
             return true
         }
+        run(command)
+        return true
+    }
 
+    /// Carries out `command` on `clip`, selecting it first: the row's
+    /// context menu. Its Delete works with or without a query.
+    func perform(_ command: PanelCommand, on clip: Clip) {
+        select(clip)
+        run(command)
+    }
+
+    /// While "Clear unpinned clips?" shows, only ⌥⌘⌫ again (or the bar's
+    /// button) clears. ⏎ is the paste key and gets pressed by habit, so the
+    /// paste keys do nothing here; Esc and every other key back out.
+    private func confirmationKey(_ command: PanelCommand) {
+        switch command {
+        case .requestClearUnpinned:
+            confirmClearUnpinned()
+        case .activate, .activateRow, .copyOnly:
+            break
+        default:
+            isConfirmingClear = false
+        }
+    }
+
+    private func run(_ command: PanelCommand) {
         notice = nil
         switch command {
         case .moveSelection(let offset):
@@ -277,16 +338,9 @@ final class PanelViewModel {
         case .openSettings:
             onOpenSettings()
         case .edit:
-            return false
+            break
         }
-        return true
-    }
-
-    /// Carries out `command` on `clip`, selecting it first: the row's
-    /// context menu.
-    func perform(_ command: PanelCommand, on clip: Clip) {
-        select(clip)
-        perform(command)
+        if command.movesThroughList { announceSelection() }
     }
 
     /// Moves the pinned `clip` being dragged to the pinned row under the
@@ -300,18 +354,27 @@ final class PanelViewModel {
 
     /// Selects the row at `index`, clamped to the list.
     func select(index: Int) {
-        guard !results.isEmpty else {
-            selectedID = nil
-            return
-        }
-        selectedID = results[min(max(index, 0), results.count - 1)].id
+        setSelection(index: results.isEmpty ? nil : min(max(index, 0), results.count - 1))
     }
 
     /// Selects `clip` (a click).
     func select(_ clip: Clip) {
         notice = nil
         isConfirmingClear = false
-        selectedID = clip.id
+        if selectedID == clip.id { return }
+        if let index = results.firstIndex(where: { $0.id == clip.id }) {
+            setSelection(index: index)
+        }
+    }
+
+    /// The panel went away. The query isn't kept while it's hidden, and the
+    /// history isn't searched again until it opens.
+    func panelDidHide() {
+        isHidden = true
+        isConfirmingClear = false
+        notice = nil
+        query = ""
+        filter = .all
     }
 
     /// Selects `clip` and pastes it, like ⏎ (a double-click).
@@ -335,8 +398,11 @@ final class PanelViewModel {
         isConfirmingClear = false
     }
 
-    /// Recomputes the results from the store, query and filter.
+    /// Recomputes the results from the store, query and filter. Skipped
+    /// while the panel is hidden; opening it refreshes.
     func refresh(selecting policy: SelectionPolicy = .keep) {
+        guard !isHidden else { return }
+        let previousID = selectedID
         let previousIndex = selectedIndex
         if let store {
             results = ClipSearch.results(for: query, filter: filter, pinned: store.pinned, recent: store.recent)
@@ -344,15 +410,33 @@ final class PanelViewModel {
             results = []
         }
 
+        guard !results.isEmpty else {
+            setSelection(index: nil)
+            return
+        }
         switch policy {
         case .first:
-            selectedID = results.first?.id
+            setSelection(index: 0)
         case .keep:
-            if let selectedID, results.contains(where: { $0.id == selectedID }) { return }
-            // The selected clip is gone (deleted or filtered out): select the
-            // one that took its place, or the new last row.
-            selectedID = results.isEmpty ? nil : results[min(previousIndex ?? 0, results.count - 1)].id
+            if let previousID, let index = results.firstIndex(where: { $0.id == previousID }) {
+                setSelection(index: index)
+            } else {
+                // The selected clip is gone (deleted or filtered out): select
+                // the one that took its place, or the new last row.
+                setSelection(index: min(previousIndex ?? 0, results.count - 1))
+            }
         }
+    }
+
+    /// Selects row `index` (`nil` for nothing) and bumps `scrollToken` when
+    /// the selected row moved. Unchanged values aren't written, so views
+    /// that read them don't update for nothing.
+    private func setSelection(index: Int?) {
+        let id = index.map { results[$0].id }
+        guard id != selectedID || index != selectedIndex else { return }
+        scrollToken &+= 1
+        if id != selectedID { selectedID = id }
+        if index != selectedIndex { selectedIndex = index }
     }
 
     // MARK: Actions
@@ -433,16 +517,38 @@ final class PanelViewModel {
     private func requestClearUnpinned() {
         guard store != nil else { return }
         guard unpinnedCount > 0 else {
-            notice = "There are no unpinned clips to clear."
+            let message = "There are no unpinned clips to clear."
+            notice = message
+            announce(message)
             return
         }
         isConfirmingClear = true
+        announce("\(clearConfirmationMessage) Press Option-Command-Delete again to clear them, or Escape to cancel.")
     }
 
     private func cycleFilter(by offset: Int) {
         let filters = ClipFilter.allCases
         let index = filters.firstIndex(of: filter) ?? 0
         filter = filters[(index + offset % filters.count + filters.count) % filters.count]
+    }
+
+    /// Tells VoiceOver which clip is selected now, since the search field
+    /// keeps the keyboard focus: "Link, github.com/…, 9 minutes ago, from
+    /// Safari. 4 of 15."
+    private func announceSelection() {
+        guard let clip = selectedClip, let index = selectedIndex else {
+            if let emptyState { announce(emptyState.title) }
+            return
+        }
+        var name: String?
+        if let bundleID = clip.sourceBundleID { name = appName(bundleID) }
+        announce(ClipAccessibility.announcement(
+            for: clip,
+            position: index + 1,
+            of: results.count,
+            appName: name,
+            now: Date()
+        ))
     }
 
     private func report(_ message: String, _ error: any Error) {
@@ -466,6 +572,9 @@ final class PanelViewModel {
         }
     }
 
+    /// A new copy (or any other change) while the panel is open keeps the
+    /// selected clip selected. While it's hidden nothing is searched; opening
+    /// the panel refreshes.
     private func historyDidChange() {
         refresh(selecting: .keep)
         observeHistory()

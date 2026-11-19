@@ -5,6 +5,10 @@ import SwiftUI
 /// a hairline, the selection marked with the highlighter. Selection moves
 /// instantly and the list scrolls just enough to keep it in view.
 ///
+/// The list itself never reads the selection: each row does, so an arrow
+/// key updates the rows on screen instead of rebuilding the whole list
+/// (which can hold 10,000 clips).
+///
 /// Each row has a context menu with the clip's actions. Pins can be dragged
 /// into a new order while the list shows them in their own order.
 struct ClipList: View {
@@ -23,29 +27,27 @@ struct ClipList: View {
             // Selection drives scrolling; a legacy scroller would only take
             // width from the rows and push the icons off the 12 pt gutter.
             .scrollIndicators(.never)
-            .onChange(of: model.selectedID) {
-                guard let id = model.selectedID else { return }
-                proxy.scrollTo(id)
-            }
-            .onChange(of: model.presentationCount) {
-                guard let id = model.results.first?.id else { return }
-                proxy.scrollTo(id, anchor: .top)
+            .background {
+                SelectionScroller(model: model, proxy: proxy)
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Clips")
     }
 
     private var rows: some View {
         let sectionBreak = model.sectionBreakIndex
-        let selectedID = model.selectedID
         let now = model.now
         let canReorderPins = model.canReorderPins
+        let matchTokens = model.matchTokens
         return LazyVStack(spacing: 0) {
             ForEach(Array(model.results.enumerated()), id: \.element.id) { index, clip in
                 ClipRow(
                     clip: clip,
+                    model: model,
                     number: index < 9 ? index + 1 : nil,
-                    isSelected: clip.id == selectedID,
                     startsSection: index == sectionBreak,
+                    matchTokens: matchTokens,
                     now: now,
                     resources: resources
                 )
@@ -76,6 +78,27 @@ struct ClipList: View {
                 let row = Int((drag.location.y / Theme.Layout.rowHeight).rounded(.down))
                 model.dragPin(clip, toRow: row)
             }
+    }
+}
+
+/// Scrolls the selected row into view whenever it moves (`scrollToken`),
+/// and back to the top when the panel opens. A view of its own, so reading
+/// the selection doesn't make the whole list draw again.
+private struct SelectionScroller: View {
+    let model: PanelViewModel
+    let proxy: ScrollViewProxy
+
+    var body: some View {
+        Color.clear
+            .onChange(of: model.scrollToken) {
+                guard let id = model.selectedID else { return }
+                proxy.scrollTo(id)
+            }
+            .onChange(of: model.presentationCount) {
+                guard let id = model.results.first?.id else { return }
+                proxy.scrollTo(id, anchor: .top)
+            }
+            .accessibilityHidden(true)
     }
 }
 
