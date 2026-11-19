@@ -1,3 +1,4 @@
+#if DEBUG
 import AppKit
 import KeptCore
 import SwiftUI
@@ -148,7 +149,7 @@ enum SnapshotRenderer {
 
         let icons = IconCache()
         let sampleThumbnails = ThumbnailCache(store: sample)
-        await sampleThumbnails.preload(sample.pinned + sample.recent)
+        await preload(sample.pinned + sample.recent, into: sampleThumbnails)
         let sampleResources = PanelResources(icons: icons, thumbnails: sampleThumbnails)
         let emptyResources = PanelResources(icons: icons, thumbnails: ThumbnailCache(store: empty))
 
@@ -195,6 +196,15 @@ enum SnapshotRenderer {
         }
         written += try await SettingsSnapshots.render(to: directory, store: sample, icons: icons)
         return written
+    }
+
+    /// Decodes every image clip in `clips` at both sizes, so the renders,
+    /// which can't wait for async work, find them cached.
+    private static func preload(_ clips: [Clip], into thumbnails: ThumbnailCache) async {
+        for clip in clips where clip.kind == .image {
+            _ = await thumbnails.image(for: clip, maxPixelSize: ThumbnailCache.rowPixelSize)
+            _ = await thumbnails.image(for: clip, maxPixelSize: ThumbnailCache.previewPixelSize)
+        }
     }
 
     /// The hint as it floats over an app: an opaque card standing in for
@@ -287,3 +297,4 @@ enum SnapshotRenderer {
         let description: String
     }
 }
+#endif

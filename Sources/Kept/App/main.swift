@@ -10,21 +10,25 @@ MainActor.assumeIsolated {
     let application = NSApplication.shared
     application.setActivationPolicy(.accessory)
 
+    #if DEBUG
     // `Kept --render-snapshots <dir>` draws the panel in sample states to PNG
-    // files for design review, then quits. A developer tool, not a feature.
+    // files for design review, then quits. A developer tool in debug builds
+    // only, not a feature.
     if let directory = SnapshotRenderer.outputDirectory(from: CommandLine.arguments) {
         Task {
             let status = await SnapshotRenderer.run(writingTo: directory)
             exit(status)
         }
         application.run()
-    } else {
-        let delegate = AppDelegate()
-        application.delegate = delegate
+        return
+    }
+    #endif
 
-        // NSApplication holds its delegate weakly; keep ours alive while it runs.
-        withExtendedLifetime(delegate) {
-            application.run()
-        }
+    let delegate = AppDelegate()
+    application.delegate = delegate
+
+    // NSApplication holds its delegate weakly; keep ours alive while it runs.
+    withExtendedLifetime(delegate) {
+        application.run()
     }
 }

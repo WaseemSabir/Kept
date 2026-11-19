@@ -1,3 +1,4 @@
+#if DEBUG
 import AppKit
 import KeptCore
 import SwiftUI
@@ -213,3 +214,4 @@ private final class NoDialogs: SettingsDialogPresenting {
     func chooseApplications() async -> [URL] { [] }
     func confirmClearHistory(_ prompt: ClearHistoryPrompt) async -> ClearHistoryChoice? { nil }
 }
+#endif

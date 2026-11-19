@@ -1,6 +1,9 @@
+#if DEBUG
 import CoreGraphics
 import Foundation
+import ImageIO
 import KeptCore
+import UniformTypeIdentifiers
 
 /// A believable clip history for snapshot renders: prose, rich text, code,
 /// links, a color, an image, files and two pins, copied from real apps over
@@ -190,7 +193,20 @@ enum SampleHistory {
               fill: color(0x2A2140))
 
         guard let image = context.makeImage() else { return Data() }
-        return ImageTranscoder.pngData(from: image) ?? Data()
+        return pngData(from: image) ?? Data()
+    }
+
+    private static func pngData(from image: CGImage) -> Data? {
+        let output = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            output as CFMutableData,
+            UTType.png.identifier as CFString,
+            1,
+            nil
+        ) else { return nil }
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return output as Data
     }
 
     private static func color(_ hex: UInt32, alpha: CGFloat = 1) -> CGColor {
@@ -202,3 +218,4 @@ enum SampleHistory {
         )
     }
 }
+#endif

@@ -82,15 +82,6 @@ final class ThumbnailCache {
         return image
     }
 
-    /// Decodes every image clip in `clips` at both sizes, so a render that
-    /// can't wait for async work (snapshots) finds them cached.
-    func preload(_ clips: [Clip]) async {
-        for clip in clips where clip.kind == .image {
-            _ = await image(for: clip, maxPixelSize: Self.rowPixelSize)
-            _ = await image(for: clip, maxPixelSize: Self.previewPixelSize)
-        }
-    }
-
     /// The clip's one image representation, found but not read: the type
     /// recorded for the clip, else the first image type it has.
     private func storedImage(of clip: Clip) -> StoredRepresentations? {
