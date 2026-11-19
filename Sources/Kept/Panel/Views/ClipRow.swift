@@ -69,7 +69,7 @@ struct ClipRow: View {
         .accessibilityAction(named: model.alternateActionTitle) {
             model.perform(.activate(alternate: true), on: clip)
         }
-        .accessibilityAction(named: clip.isPinned ? "Unpin" : "Pin") { model.perform(.togglePin, on: clip) }
+        .accessibilityAction(named: ClipMenu.pinTitle(for: clip)) { model.perform(.togglePin, on: clip) }
         .accessibilityAction(named: "Rename") { model.perform(.beginRename, on: clip) }
         .accessibilityActions {
             if clip.kind.isTextLike {

@@ -5,6 +5,16 @@ import Observation
 /// The panel's state and behavior: the query and type filter, the visible
 /// clips (from `ClipSearch`), the selection, and every action the keyboard
 /// or mouse can take. Views render it; `PanelKeyRouter` feeds it commands.
+///
+/// Every stored property lives here, so observation tracks all of it; the
+/// behavior is split by concern, and only the model and its extensions
+/// write its state:
+///
+/// - `PanelViewModel+Display.swift`: what views read (titles, the empty
+///   state, previews, facts, accessibility)
+/// - `PanelViewModel+Actions.swift`: pasting, pins, deleting, clearing,
+///   filters
+/// - `PanelViewModel+Editing.swift`: renaming (⌘R) and editing text (⌘E)
 @MainActor
 @Observable
 final class PanelViewModel {
@@ -46,26 +56,22 @@ final class PanelViewModel {
     /// copy above it). The list scrolls the selection into view on each one.
     private(set) var scrollToken = 0
     /// Whether the inline "clear unpinned clips?" bar is showing.
-    private(set) var isConfirmingClear = false
+    var isConfirmingClear = false
     /// A short message about something that went wrong, shown in the footer.
-    private(set) var notice: String?
+    var notice: String?
     /// Goes up each time the panel opens, so views can refocus and scroll.
     private(set) var presentationCount = 0
     /// The time ages are measured from; updated when the panel opens.
     private(set) var now = Date()
     /// A clip's name or text being edited, or `nil`.
-    private(set) var editing: PanelEditing?
+    var editing: PanelEditing?
     /// The name being typed into the row (⌘R).
     var nameDraft = ""
     /// The text being typed into the preview (⌘E).
     var textDraft = ""
     /// Goes up when a name or text stops being edited, so the search
     /// field takes the keyboard back.
-    private(set) var searchFocusToken = 0
-
-    /// The most characters the preview's editor takes; longer clips can't
-    /// be edited in Kept.
-    static let maxEditableCharacters = 100_000
+    var searchFocusToken = 0
 
     /// `nil` when the history couldn't be opened.
     let store: HistoryStore?
@@ -90,16 +96,16 @@ final class PanelViewModel {
     @ObservationIgnored private var isHidden = false
     /// A paste waiting for a big clip to be read off the main actor
     /// (`ClipPasting.startLoading(_:for:)`).
-    @ObservationIgnored private var pendingPaste: Task<Void, Never>?
+    @ObservationIgnored var pendingPaste: Task<Void, Never>?
     /// A big clip's text being read off the main actor before ⌘E edits it.
-    @ObservationIgnored private var pendingTextEdit: Task<Void, Never>?
+    @ObservationIgnored var pendingTextEdit: Task<Void, Never>?
 
-    private let paster: (any ClipPasting)?
-    private let pasteOptions: @MainActor () -> PasteOptions
-    private let appName: @MainActor (String) -> String?
-    private let capturePaused: @MainActor () -> Bool
+    let paster: (any ClipPasting)?
+    let pasteOptions: @MainActor () -> PasteOptions
+    let appName: @MainActor (String) -> String?
+    let capturePaused: @MainActor () -> Bool
     /// Makes previews (big clips off the main actor) and keeps recent ones.
-    private let previews: PreviewLoader
+    let previews: PreviewLoader
 
     init(
         store: HistoryStore?,
@@ -120,54 +126,11 @@ final class PanelViewModel {
         observeHistory()
     }
 
-    // MARK: Derived state
-
     var selectedClip: Clip? {
         selectedIndex.map { results[$0] }
     }
 
-    var isCapturePaused: Bool { capturePaused() }
-
     var isSearching: Bool { !query.allSatisfy(\.isWhitespace) }
-
-    /// ⌘⌫ deletes the selected clip only while the search field is empty;
-    /// with a query it deletes to the start of the line, as in any text
-    /// field.
-    var canDeleteWithKey: Bool { query.isEmpty && selectedClip != nil }
-
-    /// The query's words, for marking matches in the rows.
-    var matchTokens: [String] { MatchHighlighter.tokens(of: query) }
-
-    /// Unpinned clips in the whole history, for the clear confirmation.
-    var unpinnedCount: Int { store?.recent.count ?? 0 }
-
-    /// "Clear 13 unpinned clips? Pinned clips stay."
-    var clearConfirmationMessage: String {
-        let count = unpinnedCount
-        let clips = count == 1 ? "1 unpinned clip" : "\(count.formatted()) unpinned clips"
-        return "Clear \(clips)? Pinned clips stay."
-    }
-
-    /// What ⏎ does: "Paste", or "Copy" when pasting directly is off; "as
-    /// plain text" when that's the default.
-    var primaryActionTitle: String {
-        let options = pasteOptions()
-        let verb = options.pasteDirectly ? "Paste" : "Copy"
-        return options.alwaysPastePlainText ? "\(verb) as plain text" : verb
-    }
-
-    /// What ⌥⏎ does: the other format.
-    var alternateActionTitle: String {
-        let options = pasteOptions()
-        let verb = options.pasteDirectly ? "Paste" : "Copy"
-        return options.alwaysPastePlainText ? "\(verb) with formatting" : "\(verb) as plain text"
-    }
-
-    /// What ⌘⏎ does, or `nil` when ⏎ already only copies.
-    var copyOnlyActionTitle: String? {
-        pasteOptions().pasteDirectly ? "Copy" : nil
-    }
-    var pinActionTitle: String { selectedClip?.isPinned == true ? "Unpin" : "Pin" }
 
     /// How `PanelKeyRouter` reads keys: in the search field, or in the name
     /// or text being edited.
@@ -183,115 +146,7 @@ final class PanelViewModel {
         if case .text(let edit) = editing { edit } else { nil }
     }
 
-    /// The row's context menu for `clip` (see `ClipMenu`).
-    func menuSections(for clip: Clip) -> [[ClipMenu.Item]] {
-        ClipMenu.sections(
-            for: clip,
-            primaryTitle: primaryActionTitle,
-            alternateTitle: alternateActionTitle,
-            copyOnlyTitle: copyOnlyActionTitle
-        )
-    }
-
-    /// Whether pins can be dragged or moved with ⌥⌘↑ / ⌥⌘↓ here: the list
-    /// shows them in their own order, so a pin's row is its place.
-    var canReorderPins: Bool {
-        !isSearching && (filter == .all || filter == .pinned)
-    }
-
-    /// The row where unpinned clips start below the pinned section, when the
-    /// list shows both (an empty query lists pins first).
-    var sectionBreakIndex: Int? {
-        guard !isSearching, filter != .pinned else { return nil }
-        let pinCount = results.prefix { $0.isPinned }.count
-        return pinCount > 0 && pinCount < results.count ? pinCount : nil
-    }
-
-    /// What to say when the list is empty; `nil` when it isn't.
-    var emptyState: EmptyState? {
-        guard results.isEmpty else { return nil }
-        guard let store else {
-            let reason = unavailableReason.map { "\($0) " } ?? ""
-            return EmptyState(
-                title: "Kept couldn't open your history.",
-                hint: "\(reason)Quit and reopen Kept to try again.",
-                spansPanel: true
-            )
-        }
-        if store.pinned.isEmpty, store.recent.isEmpty {
-            if isCapturePaused {
-                return EmptyState(
-                    title: "Capture is paused.",
-                    hint: "Resume it from the Kept menu in the menu bar, then copy something.",
-                    spansPanel: true
-                )
-            }
-            return EmptyState(
-                title: "Copy something and it shows up here.",
-                hint: "Text, links, images and files you copy are kept here. Pin the ones you use often with ⌘P.",
-                spansPanel: true
-            )
-        }
-        if isSearching {
-            let shownQuery = Self.shortened(query.trimmingCharacters(in: .whitespaces))
-            return EmptyState(
-                title: "No \(ClipDisplay.noun(for: filter)) match “\(shownQuery)”.",
-                hint: filter == .all
-                    ? "Press Esc to clear the search."
-                    : "Press Esc to clear the search, or Tab to look in other kinds.",
-                spansPanel: false
-            )
-        }
-        switch filter {
-        case .all:
-            return EmptyState(title: "Nothing to show.", hint: nil, spansPanel: false)
-        case .pinned:
-            return EmptyState(
-                title: "No pinned clips yet.",
-                hint: "Select a clip and press ⌘P to keep it at the top.",
-                spansPanel: false
-            )
-        case .text:
-            return EmptyState(title: "No text clips yet.", hint: "Text you copy shows up here.", spansPanel: false)
-        case .links:
-            return EmptyState(title: "No links yet.", hint: "Links you copy show up here.", spansPanel: false)
-        case .images:
-            return EmptyState(
-                title: "No images yet.",
-                hint: "Copy an image, or press ⌃⇧⌘4 to copy part of the screen.",
-                spansPanel: false
-            )
-        case .files:
-            return EmptyState(title: "No files yet.", hint: "Copy files in Finder and they show up here.", spansPanel: false)
-        }
-    }
-
-    /// The clip's preview: kept from before, or made now for a small clip;
-    /// `.loading` while a big one still has to be read (`loadPreview(for:)`).
-    func preview(for clip: Clip) -> ClipPreview {
-        previews.preview(for: clip)
-    }
-
-    /// Reads a big clip's preview off the main actor; `nil` when the caller
-    /// was cancelled (another clip was selected first).
-    func loadPreview(for clip: Clip) async -> ClipPreview? {
-        await previews.load(clip)
-    }
-
-    func facts(for clip: Clip, preview: ClipPreview) -> [ClipFact] {
-        var name: String?
-        if let bundleID = clip.sourceBundleID { name = appName(bundleID) }
-        return ClipFacts.facts(for: clip, preview: preview, appName: name, now: now)
-    }
-
-    /// The row's accessibility label (see `ClipAccessibility`).
-    func accessibilityLabel(for clip: Clip) -> String {
-        var name: String?
-        if let bundleID = clip.sourceBundleID { name = appName(bundleID) }
-        return ClipAccessibility.label(for: clip, appName: name, now: now)
-    }
-
-    // MARK: Intents
+    // MARK: Showing and hiding
 
     /// Resets the panel for a fresh look: empty query, all clips, first row.
     func prepareForShow() {
@@ -304,6 +159,22 @@ final class PanelViewModel {
         refresh(selecting: .first)
         presentationCount += 1
     }
+
+    /// The panel went away. The query isn't kept while it's hidden, and the
+    /// history isn't searched again until it opens.
+    func panelDidHide() {
+        // Moving away saves, as clicking elsewhere does.
+        finishEditing()
+        isHidden = true
+        pendingPaste?.cancel()
+        pendingPaste = nil
+        isConfirmingClear = false
+        notice = nil
+        query = ""
+        filter = .all
+    }
+
+    // MARK: Commands
 
     /// Carries out the command for a key press. Returns `false` for keys the
     /// panel leaves to the search field (text editing, and ⌘⌫ while there's
@@ -405,14 +276,13 @@ final class PanelViewModel {
         if command.movesThroughList { announceSelection() }
     }
 
-    /// Moves the pinned `clip` being dragged to the pinned row under the
-    /// pointer and selects it. Rows below the pinned section count as its
-    /// last place.
-    func dragPin(_ clip: Clip, toRow row: Int) {
-        guard canReorderPins, clip.isPinned else { return }
-        if selectedID != clip.id { select(clip) }
-        movePin(clip.id, toIndex: row)
+    /// Shows `message` in the footer and logs it with `error`.
+    func report(_ message: String, _ error: any Error) {
+        notice = message
+        Log.panel.error("\(message, privacy: .public) \(String(describing: error), privacy: .public)")
     }
+
+    // MARK: Selection
 
     /// Selects the row at `index`, clamped to the list.
     func select(index: Int) {
@@ -430,44 +300,6 @@ final class PanelViewModel {
         if let index = results.firstIndex(where: { $0.id == clip.id }) {
             setSelection(index: index)
         }
-    }
-
-    /// The panel went away. The query isn't kept while it's hidden, and the
-    /// history isn't searched again until it opens.
-    func panelDidHide() {
-        // Moving away saves, as clicking elsewhere does.
-        finishEditing()
-        isHidden = true
-        pendingPaste?.cancel()
-        pendingPaste = nil
-        isConfirmingClear = false
-        notice = nil
-        query = ""
-        filter = .all
-    }
-
-    /// Selects `clip` and pastes it, like ⏎ (a double-click). A name or
-    /// text being edited is saved first, so an edited clip pastes as edited.
-    func activate(_ clip: Clip) {
-        guard renamingID != clip.id else { return }
-        finishEditing()
-        select(clip)
-        paste(store?.clip(withID: clip.id) ?? clip, .paste(alternate: false))
-    }
-
-    func confirmClearUnpinned() {
-        isConfirmingClear = false
-        guard let store else { return }
-        do {
-            try store.clearUnpinned()
-        } catch {
-            report("Couldn't clear the history.", error)
-        }
-        refresh(selecting: .first)
-    }
-
-    func cancelClearUnpinned() {
-        isConfirmingClear = false
     }
 
     /// Recomputes the results from the store, query and filter. Skipped
@@ -516,342 +348,10 @@ final class PanelViewModel {
         if index != selectedIndex { selectedIndex = index }
     }
 
-    // MARK: Actions
-
     private func moveSelection(by offset: Int) {
         guard !results.isEmpty else { return }
         let current = selectedIndex ?? (offset > 0 ? -1 : results.count)
         select(index: current + offset)
-    }
-
-    /// Writes `clip`, closes the panel, then pastes (or shows a hint where
-    /// the panel was). If the clip can't be written the panel stays open and
-    /// says so. A big clip is read off the main actor first; meanwhile
-    /// another paste does nothing, and hiding the panel drops this one.
-    private func paste(_ clip: Clip?, _ request: PasteRequest) {
-        guard let clip else { return }
-        guard let paster else {
-            notice = "Kept can't paste while its history is unavailable."
-            return
-        }
-        guard pendingPaste == nil else { return }
-        guard let loading = paster.startLoading(clip, for: request) else {
-            write(clip, request)
-            return
-        }
-        pendingPaste = Task { [weak self] in
-            await withTaskCancellationHandler {
-                await loading.value
-            } onCancel: {
-                loading.cancel()
-            }
-            guard let self, !Task.isCancelled else { return }
-            self.pendingPaste = nil
-            self.write(clip, request)
-        }
-    }
-
-    /// The second half of `paste(_:_:)`, once anything slow has been read.
-    private func write(_ clip: Clip, _ request: PasteRequest) {
-        guard let paster else { return }
-        let plan: PastePlan
-        do {
-            plan = try paster.prepare(clip, for: request)
-        } catch {
-            report("Couldn't copy that clip.", error)
-            return
-        }
-        let anchor = hintAnchor()
-        onDismiss()
-        paster.complete(plan, anchor: anchor)
-    }
-
-    private func togglePin() {
-        guard let store, let clip = selectedClip else { return }
-        do {
-            if clip.isPinned {
-                try store.unpin(clip.id)
-            } else {
-                try store.pin(clip.id)
-            }
-        } catch {
-            report(clip.isPinned ? "Couldn't unpin that clip." : "Couldn't pin that clip.", error)
-        }
-        refresh(selecting: .keep)
-    }
-
-    /// ⌥⌘↑ / ⌥⌘↓: the selected pin swaps places with its neighbor.
-    private func moveSelectedPin(by offset: Int) {
-        guard canReorderPins, let store, let clip = selectedClip, clip.isPinned,
-              let index = store.pinned.firstIndex(where: { $0.id == clip.id })
-        else { return }
-        movePin(clip.id, toIndex: index + offset)
-    }
-
-    /// Moves a pin to `index` in the pinned section (clamped); it stays
-    /// selected if it was.
-    private func movePin(_ id: UUID, toIndex index: Int) {
-        guard let store, let from = store.pinned.firstIndex(where: { $0.id == id }) else { return }
-        let target = min(max(index, 0), store.pinned.count - 1)
-        guard target != from else { return }
-        do {
-            try store.movePin(id, toIndex: target)
-        } catch {
-            report("Couldn't move that pin.", error)
-        }
-        refresh(selecting: .keep)
-    }
-
-    private func deleteSelection() {
-        guard let store, let clip = selectedClip else { return }
-        do {
-            try store.delete(clip.id)
-        } catch {
-            report("Couldn't delete that clip.", error)
-        }
-        refresh(selecting: .keep)
-    }
-
-    // MARK: Renaming and editing
-
-    /// ⌘R: the selected row's title becomes a field holding its name (or
-    /// title), for `commitRename()`.
-    func beginRename() {
-        guard let clip = selectedClip else { return }
-        finishEditing()
-        notice = nil
-        nameDraft = clip.displayTitle
-        editing = .name(clipID: clip.id)
-    }
-
-    /// ⌘E: the preview becomes an editor for the selected clip's text.
-    /// Images and files can't be edited (the footer says so and suggests
-    /// ⌘R); a big clip is read off the main actor first.
-    func beginTextEdit() {
-        guard let clip = selectedClip, let store else { return }
-        finishEditing()
-        notice = nil
-        guard clip.kind.isTextLike else {
-            let message = Self.notEditableMessage(for: clip)
-            notice = message
-            announce(message)
-            return
-        }
-        if let count = clip.metadata.characterCount, count > Self.maxEditableCharacters {
-            refuseTooLongEdit()
-            return
-        }
-        let stored: StoredRepresentations
-        do {
-            stored = try store.storedRepresentations(for: clip.id, types: Set(PasteboardItem.textTypes))
-        } catch {
-            report("Couldn't open that clip for editing.", error)
-            return
-        }
-        if stored.isInMemory, stored.byteSize <= PreviewLoader.immediateByteLimit {
-            startTextEdit(of: clip, text: Self.editableText(of: stored))
-            return
-        }
-        pendingTextEdit?.cancel()
-        let id = clip.id
-        pendingTextEdit = Task { [weak self] in
-            let text = await Task.detached(priority: .userInitiated) {
-                PanelViewModel.editableText(of: stored)
-            }.value
-            guard let self, !Task.isCancelled else { return }
-            self.pendingTextEdit = nil
-            guard let clip = self.selectedClip, clip.id == id else { return }
-            self.startTextEdit(of: clip, text: text)
-        }
-    }
-
-    /// Saves the name or text being edited (⏎ or ⌘S); the same as
-    /// `finishEditing()` except that text that can't be saved stays in the
-    /// editor with a notice.
-    func commitEditing() {
-        switch editing {
-        case .name: commitRename()
-        case .text: commitTextEdit(keepingOnFailure: true)
-        case nil: break
-        }
-    }
-
-    /// Esc: puts the name or text back as it was.
-    func cancelEditing() {
-        guard editing != nil else { return }
-        notice = nil
-        endEditing()
-    }
-
-    /// Saves the name or text being edited because the user moved away
-    /// from it: clicked elsewhere, searched, or closed the panel.
-    func finishEditing() {
-        pendingTextEdit?.cancel()
-        pendingTextEdit = nil
-        switch editing {
-        case .name: commitRename()
-        case .text: commitTextEdit(keepingOnFailure: false)
-        case nil: break
-        }
-    }
-
-    /// The name field lost the keyboard (a click elsewhere): saves it if
-    /// it's still `clipID`'s.
-    func renameFieldDidResign(for clipID: UUID) {
-        guard renamingID == clipID else { return }
-        commitRename()
-    }
-
-    /// The text editor lost the keyboard (a click in the search field):
-    /// saves it if it's still `clipID`'s.
-    func textEditorDidResign(for clipID: UUID) {
-        guard textEdit?.clipID == clipID else { return }
-        commitTextEdit(keepingOnFailure: false)
-    }
-
-    private func commitRename() {
-        guard case .name(let id) = editing, let store else { return }
-        let name = nameDraft
-        endEditing()
-        do {
-            let renamed = try store.rename(id, to: name)
-            announce(renamed.customTitle.map { "Renamed to \($0)." } ?? "Name removed.")
-        } catch {
-            report("Couldn't rename that clip.", error)
-        }
-        refresh(selecting: .keep)
-    }
-
-    private func commitTextEdit(keepingOnFailure: Bool) {
-        guard let edit = textEdit, let store else { return }
-        let text = textDraft
-        guard text != edit.original else {
-            endEditing()
-            return
-        }
-        do throws(HistoryStoreError) {
-            try store.editText(edit.clipID, to: text, at: Date())
-            endEditing()
-            notice = nil
-            announce("Edit saved.")
-        } catch .emptyText {
-            if keepingOnFailure {
-                notice = "Type some text to save, or press Esc to cancel."
-                announce(notice ?? "")
-                return
-            }
-            endEditing()
-            notice = "An empty edit wasn't saved."
-        } catch {
-            report("Couldn't save your edit.", error)
-            if keepingOnFailure { return }
-            endEditing()
-        }
-        refresh(selecting: .keep)
-    }
-
-    /// Stops editing without saving, and gives the keyboard back to the
-    /// search field.
-    private func endEditing() {
-        guard editing != nil else { return }
-        editing = nil
-        searchFocusToken &+= 1
-    }
-
-    private func startTextEdit(of clip: Clip, text: String?) {
-        guard let text else {
-            // Never edit a stand-in (the search text is cut and collapsed).
-            notice = "Couldn't open that clip for editing."
-            Log.panel.error("A clip to edit has no readable text")
-            return
-        }
-        let excerpt = TextSanitizer.multiline(text, maxUTF16Count: Self.maxEditableCharacters)
-        guard !excerpt.isTruncated else {
-            refuseTooLongEdit()
-            return
-        }
-        textDraft = excerpt.text
-        editing = .text(PanelEditing.TextEdit(
-            clipID: clip.id,
-            original: excerpt.text,
-            dropsFormatting: clip.kind == .richText,
-            isCode: Self.editsAsCode(clip)
-        ))
-    }
-
-    private func refuseTooLongEdit() {
-        let message = "Kept edits up to \(Self.maxEditableCharacters.formatted()) characters."
-        notice = message
-        announce(message)
-    }
-
-    /// Code, links and colors are edited in SF Mono, as the preview shows them.
-    static func editsAsCode(_ clip: Clip) -> Bool {
-        clip.metadata.looksLikeCode || clip.kind == .link || clip.kind == .color
-    }
-
-    /// Why ⌘E does nothing for an image or files, and what to do instead;
-    /// short enough for the footer beside its key hints.
-    static func notEditableMessage(for clip: Clip) -> String {
-        switch clip.kind {
-        case .image: "Images can't be edited. ⌘R renames it."
-        case .file where (clip.metadata.fileCount ?? 1) > 1: "Files can't be edited. ⌘R renames them."
-        default: "Files can't be edited. ⌘R renames it."
-        }
-    }
-
-    /// The clip's text as the editor shows it: its plain text (string,
-    /// URL, RTF, then HTML), read wherever this runs; `nil` when it can't
-    /// be read.
-    private nonisolated static func editableText(of stored: StoredRepresentations) -> String? {
-        do {
-            return PasteboardItem.plainText(of: try stored.load())
-        } catch {
-            Log.panel.error("Couldn't read a clip to edit: \(String(describing: error), privacy: .public)")
-            return nil
-        }
-    }
-
-    private func requestClearUnpinned() {
-        guard store != nil else { return }
-        guard unpinnedCount > 0 else {
-            let message = "There are no unpinned clips to clear."
-            notice = message
-            announce(message)
-            return
-        }
-        isConfirmingClear = true
-        announce("\(clearConfirmationMessage) Press Option-Command-Delete again to clear them, or Escape to cancel.")
-    }
-
-    private func cycleFilter(by offset: Int) {
-        let filters = ClipFilter.allCases
-        let index = filters.firstIndex(of: filter) ?? 0
-        filter = filters[(index + offset % filters.count + filters.count) % filters.count]
-    }
-
-    /// Tells VoiceOver which clip is selected now, since the search field
-    /// keeps the keyboard focus: "Link, github.com/…, 9 minutes ago, from
-    /// Safari. 4 of 15."
-    private func announceSelection() {
-        guard let clip = selectedClip, let index = selectedIndex else {
-            if let emptyState { announce(emptyState.title) }
-            return
-        }
-        var name: String?
-        if let bundleID = clip.sourceBundleID { name = appName(bundleID) }
-        announce(ClipAccessibility.announcement(
-            for: clip,
-            position: index + 1,
-            of: results.count,
-            appName: name,
-            now: Date()
-        ))
-    }
-
-    private func report(_ message: String, _ error: any Error) {
-        notice = message
-        Log.panel.error("\(message, privacy: .public) \(String(describing: error), privacy: .public)")
     }
 
     // MARK: Observing the history
@@ -876,9 +376,5 @@ final class PanelViewModel {
     private func historyDidChange() {
         refresh(selecting: .keep)
         observeHistory()
-    }
-
-    private static func shortened(_ text: String, limit: Int = 40) -> String {
-        text.count > limit ? String(text.prefix(limit)) + "…" : text
     }
 }

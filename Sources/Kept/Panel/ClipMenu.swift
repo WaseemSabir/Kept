@@ -24,12 +24,17 @@ enum ClipMenu {
             paste.append(Item(title: copyOnlyTitle, command: .copyOnly))
         }
         var change = [
-            Item(title: clip.isPinned ? "Unpin" : "Pin", command: .togglePin),
+            Item(title: pinTitle(for: clip), command: .togglePin),
             Item(title: "Rename…", command: .beginRename),
         ]
         if clip.kind.isTextLike {
             change.append(Item(title: "Edit…", command: .beginTextEdit))
         }
         return [paste, change, [Item(title: "Delete", command: .delete)]]
+    }
+
+    /// What pinning does to `clip`: "Pin", or "Unpin" for a pinned clip.
+    static func pinTitle(for clip: Clip) -> String {
+        clip.isPinned ? "Unpin" : "Pin"
     }
 }
