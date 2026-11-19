@@ -46,5 +46,70 @@ struct RichTextExtractorTests {
     @Test("Treats a stray angle bracket and ampersand as text")
     func keepsStrayCharacters() {
         #expect(HTMLTextExtractor.plainText(from: "a < b & c") == "a < b & c")
+        #expect(HTMLTextExtractor.plainText(from: "1 < 2 and 3 > 2") == "1 < 2 and 3 > 2")
+        // As in a browser, "<y" opens a tag that runs to the next ">".
+        #expect(HTMLTextExtractor.plainText(from: "x<y and <b>bold</b>") == "xbold")
+        #expect(HTMLTextExtractor.plainText(from: "x<y z") == "x<y z")
+    }
+
+    @Test("Handles unclosed comments, tags and skipped elements")
+    func handlesUnclosedMarkup() {
+        #expect(HTMLTextExtractor.plainText(from: "before<!-- never closed <p>hidden") == "before")
+        #expect(HTMLTextExtractor.plainText(from: "before<SCRIPT>alert(1)") == "before")
+        #expect(HTMLTextExtractor.plainText(from: "a<script>x</script b") == "a")
+        #expect(HTMLTextExtractor.plainText(from: "a<Style>p{}</STYLE>b") == "ab")
+        #expect(HTMLTextExtractor.plainText(from: "&#x110000; &#99999999999; &bogus; &amp") == "&#x110000; &#99999999999; &bogus; &amp")
+    }
+
+    @Test("Extracts hostile HTML in near-linear time", arguments: [
+        "x<y ", "<", "<a", "<!--", "<script>", "</", "&#", "<p>a</p>",
+    ])
+    func extractsHostileHTMLQuickly(unit: String) {
+        let small = String(repeating: unit, count: 50_000)
+        let large = String(repeating: unit, count: 400_000)
+        let clock = ContinuousClock()
+        _ = HTMLTextExtractor.plainText(from: small)  // warm up
+        let smallTime = clock.measure { _ = HTMLTextExtractor.plainText(from: small) }
+        let largeTime = clock.measure { _ = HTMLTextExtractor.plainText(from: large) }
+        // 8x the input may take ~8x the time; quadratic would take ~64x.
+        #expect(largeTime < smallTime * 24 + .milliseconds(200), "\(unit): \(smallTime) → \(largeTime)")
+        #expect(largeTime < .seconds(5))
+    }
+
+    @Test("Extracts a multi-megabyte single line")
+    func extractsLongLine() {
+        let html = "<p>" + String(repeating: "word ", count: 600_000) + "</p>"
+        let elapsed = ContinuousClock().measure {
+            #expect(HTMLTextExtractor.plainText(from: html).utf8.count == 600_000 * 5 - 1)
+        }
+        #expect(elapsed < .seconds(5))
+    }
+
+    @Test("Survives deep nesting, unclosed groups and overlong control words in RTF")
+    func handlesHostileRTF() {
+        let deep = #"{\rtf1 "# + String(repeating: "{", count: 100_000) + "deep" + String(repeating: "}", count: 100_000) + " end}"
+        #expect(RTFTextExtractor.plainText(from: Data(deep.utf8)) == "deep end")
+
+        let unclosed = #"{\rtf1 Hello {\b world"#
+        #expect(RTFTextExtractor.plainText(from: Data(unclosed.utf8)) == "Hello world")
+
+        let longWord = #"{\rtf1 A\"# + String(repeating: "x", count: 100_000) + #"123456789012345 B}"#
+        #expect(RTFTextExtractor.plainText(from: Data(longWord.utf8)) == "AB")
+
+        // `\bin` data may hold braces and backslashes; it is skipped whole.
+        let binary = #"{\rtf1 A{\*\blipuid x}\bin5 {}\\\ B}"#
+        #expect(RTFTextExtractor.plainText(from: Data(binary.utf8)) == "A B")
+    }
+
+    @Test("Extracts hostile RTF in near-linear time", arguments: ["{", "}", "{\\*", "\\u", "\\'", "\\uc9999 "])
+    func extractsHostileRTFQuickly(unit: String) {
+        let small = Data((#"{\rtf1 "# + String(repeating: unit, count: 50_000)).utf8)
+        let large = Data((#"{\rtf1 "# + String(repeating: unit, count: 400_000)).utf8)
+        let clock = ContinuousClock()
+        _ = RTFTextExtractor.plainText(from: small)
+        let smallTime = clock.measure { _ = RTFTextExtractor.plainText(from: small) }
+        let largeTime = clock.measure { _ = RTFTextExtractor.plainText(from: large) }
+        #expect(largeTime < smallTime * 24 + .milliseconds(200), "\(unit): \(smallTime) → \(largeTime)")
+        #expect(largeTime < .seconds(5))
     }
 }

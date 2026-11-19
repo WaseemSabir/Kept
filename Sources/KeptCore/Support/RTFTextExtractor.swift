@@ -6,8 +6,19 @@ import Foundation
 /// plain string; pasting always uses the original RTF bytes. Handles groups,
 /// ignorable destinations (font and color tables, pictures, field
 /// instructions…), `\'hh` escapes (Windows-1252), `\uN` escapes with `\ucN`
-/// fallbacks and surrogate pairs, and the common special-character words.
+/// fallbacks and surrogate pairs, `\binN` data, and the common
+/// special-character words.
+///
+/// One linear pass over the bytes. Hostile input stays cheap: nesting
+/// deeper than `maxDepth` stops saving group state, and overlong control
+/// words and parameters are skipped without being decoded.
 enum RTFTextExtractor {
+    /// Groups nested deeper than this share their parent's state.
+    static let maxDepth = 256
+    /// The RTF spec caps control words at 32 letters and parameters at 10 digits.
+    private static let maxWordLength = 32
+    private static let maxParameterDigits = 10
+
     static func plainText(from data: Data) -> String {
         var parser = Parser(bytes: [UInt8](data))
         parser.run()
@@ -24,6 +35,8 @@ enum RTFTextExtractor {
         var index = 0
         var state = GroupState()
         var stack: [GroupState] = []
+        /// Groups opened past `maxDepth`, which saved no state.
+        var overflowDepth = 0
         var output = String.UnicodeScalarView()
         /// Fallback characters still to drop after a `\uN` escape.
         var pendingFallback = 0
@@ -41,13 +54,21 @@ enum RTFTextExtractor {
                 index += 1
                 switch byte {
                 case UInt8(ascii: "{"):
-                    stack.append(state)
+                    if stack.count < RTFTextExtractor.maxDepth {
+                        stack.append(state)
+                    } else {
+                        overflowDepth += 1
+                    }
                     pendingFallback = 0
                     if peek(UInt8(ascii: "\\")), peek(UInt8(ascii: "*"), offset: 1) {
                         state.skipsText = true
                     }
                 case UInt8(ascii: "}"):
-                    state = stack.popLast() ?? GroupState()
+                    if overflowDepth > 0 {
+                        overflowDepth -= 1
+                    } else {
+                        state = stack.popLast() ?? GroupState()
+                    }
                     pendingFallback = 0
                 case UInt8(ascii: "\\"):
                     readControl()
@@ -94,17 +115,27 @@ enum RTFTextExtractor {
 
             let wordStart = index
             while index < bytes.count, isLetter(bytes[index]) { index += 1 }
-            let word = String(decoding: bytes[wordStart..<index], as: UTF8.self)
+            let wordLength = index - wordStart
 
             var parameter: Int?
             let parameterStart = index
             if peek(UInt8(ascii: "-")) { index += 1 }
+            let digitsStart = index
             while index < bytes.count, isDigit(bytes[index]) { index += 1 }
-            if index > parameterStart {
+            let digitCount = index - digitsStart
+            if digitCount > 0, digitCount <= RTFTextExtractor.maxParameterDigits {
                 parameter = Int(String(decoding: bytes[parameterStart..<index], as: UTF8.self))
             }
             if peek(UInt8(ascii: " ")) { index += 1 }
 
+            // Overlong words aren't RTF; skip them rather than decode megabytes.
+            guard wordLength <= RTFTextExtractor.maxWordLength else { return }
+            let word = String(decoding: bytes[wordStart..<(wordStart + wordLength)], as: UTF8.self)
+            if word == "bin" {
+                // `\binN` is followed by N raw bytes, which may contain braces.
+                index = min(bytes.count, index + max(0, parameter ?? 0))
+                return
+            }
             handle(word: word, parameter: parameter)
         }
 
@@ -119,7 +150,7 @@ enum RTFTextExtractor {
             case "tab", "cell":
                 emit(0x09)
             case "uc":
-                state.unicodeFallbackLength = max(0, parameter ?? 1)
+                state.unicodeFallbackLength = min(max(0, parameter ?? 1), 16)
             case "u":
                 guard let parameter else { return }
                 let value = UInt32(truncatingIfNeeded: parameter < 0 ? parameter + 65_536 : parameter)
