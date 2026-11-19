@@ -218,10 +218,8 @@ final class CaptureService {
         }
         // A slow build can finish after the same content was copied again
         // and recorded; recording it now would move that clip back in time.
-        let contentHash = staged.draft.contentHash
-        let existing = store.pinned.first { $0.contentHash == contentHash }
-            ?? store.recent.first { $0.contentHash == contentHash }
-        if let existing, existing.lastCopiedAt > facts.copiedAt {
+        if let existing = store.clip(withContentHash: staged.draft.contentHash),
+           existing.lastCopiedAt > facts.copiedAt {
             store.discard(staged)
             return
         }
