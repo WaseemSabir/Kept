@@ -21,5 +21,7 @@ public enum PreferenceDefaults {
     public static let captureFiles = true
     /// Clips bigger than this (all representations together) are skipped.
     public static let maxItemBytes = 20 * 1024 * 1024
-    public static let maxItemBytesRange = (1024 * 1024)...(1024 * 1024 * 1024)
+    /// 1 MB to 100 MB: everything Kept stores is read into memory on the
+    /// main actor when it's recorded or pasted.
+    public static let maxItemBytesRange = (1024 * 1024)...(100 * 1024 * 1024)
 }

@@ -37,11 +37,40 @@ struct DetectorTests {
         #expect(ColorParser.hex(from: text) == hex)
     }
 
+    @Test("Accepts short colors that can't be words or issue numbers", arguments: [
+        ("#fff", "#FFFFFF"), ("#000", "#000000"), ("#333", "#333333"), ("#0af", "#00AAFF"), ("#0000", "#00000000"),
+        ("#ffff", "#FFFFFF"), ("#123456", "#123456"), ("#00000000", "#00000000"), ("rgb(.5, 10.25, 0)", "#010A00"),
+    ])
+    func parsesShortColors(text: String, hex: String) {
+        #expect(ColorParser.hex(from: text) == hex)
+    }
+
     @Test("Rejects things that aren't colors", arguments: [
         "#FF6A0", "#GG0000", "#hashtag", "rgb(256, 0, 0)", "rgb(1, 2)", "rgba(0,0,0,2)", "FF6A00", "#",
+        // Issue references and words.
+        "#123", "#1234", "#404", "#add", "#bad", "#cafe", "#beef", "#face", "#fade",
+        // Fullwidth and other non-ASCII digits.
+        "#１２３４５６", "#ＦＦ６Ａ００", "rgb(２５５, 0, 0)", "#١٢٣٤٥٦",
+        // Numbers CSS doesn't allow.
+        "rgb(0x10, 1e2, 3)", "rgb(+1, 2, 3)", "rgb(-0, 2, 3)", "rgb(1., 2, 3)", "rgb(inf, 0, 0)", "rgb(nan, 0, 0)",
+        "rgba(1, 2, 3, 1e-1)",
     ])
     func rejectsNonColors(text: String) {
         #expect(ColorParser.hex(from: text) == nil)
+    }
+
+    @Test("Gives up early on long text")
+    func detectorsBailOutOnLength() {
+        let huge = "#" + String(repeating: "f", count: 5) + String(repeating: " ", count: 10_000_000)
+        let url = "https://example.com/" + String(repeating: "a", count: 10_000_000)
+        let elapsed = ContinuousClock().measure {
+            #expect(ColorParser.hex(from: huge) == nil)
+            #expect(LinkDetector.link(in: url) == nil)
+        }
+        #expect(elapsed < .milliseconds(500))
+        let longButFine = "https://Example.com/" + String(repeating: "a", count: 10_000)
+        #expect(LinkDetector.link(in: longButFine)?.host == "example.com")
+        #expect(LinkDetector.link(in: longButFine)?.url == longButFine)
     }
 
     @Test("Spots code, paths and JSON", arguments: [

@@ -9,16 +9,22 @@ enum LinkDetector {
         var host: String?
     }
 
+    /// Longer text is never treated as a link; checked before any other
+    /// work, so a multi-megabyte clip costs nothing here.
+    static let maxLength = 16 * 1024
+
     /// The link `text` consists of, if it is exactly one `http`, `https` or
     /// `mailto` URL (surrounding whitespace aside).
     static func link(in text: String) -> Link? {
+        guard text.utf8.count <= maxLength else { return nil }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !trimmed.unicodeScalars.contains(where: \.properties.isWhitespace) else {
             return nil
         }
-        let lowercased = trimmed.lowercased()
+        // Only the scheme and authority are compared case-insensitively.
+        let scheme = trimmed.prefix(8).lowercased()
 
-        if lowercased.hasPrefix("mailto:") {
+        if scheme.hasPrefix("mailto:") {
             let address = trimmed.dropFirst("mailto:".count)
             guard let at = address.firstIndex(of: "@"), at != address.startIndex,
                   address.index(after: at) != address.endIndex
@@ -26,10 +32,10 @@ enum LinkDetector {
             return Link(url: trimmed, host: nil)
         }
 
-        for scheme in ["http://", "https://"] where lowercased.hasPrefix(scheme) {
-            let rest = lowercased.dropFirst(scheme.count)
+        for prefix in ["http://", "https://"] where scheme.hasPrefix(prefix) {
+            let rest = trimmed.dropFirst(prefix.count)
             let authority = rest.prefix { $0 != "/" && $0 != "?" && $0 != "#" }
-            guard let host = host(fromAuthority: authority) else { return nil }
+            guard let host = host(fromAuthority: Substring(authority.lowercased())) else { return nil }
             return Link(url: trimmed, host: host)
         }
         return nil

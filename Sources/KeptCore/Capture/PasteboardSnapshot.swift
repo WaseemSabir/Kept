@@ -11,18 +11,37 @@ public struct PasteboardSnapshot: Sendable, Hashable {
     /// The app that wrote the pasteboard. Resolve it with
     /// `sourceBundleID(marker:frontmost:)`.
     public var sourceBundleID: String?
+    /// Every type the pasteboard declared (`NSPasteboard.types`), including
+    /// markers whose data was never read, such as
+    /// `org.nspasteboard.ConcealedType`. `CapturePolicy.decision(for:)` and
+    /// `ClipBuilder` check it as well as the items, so a privacy marker
+    /// stops capture even though the app reads only captured types.
+    public var declaredTypes: [PasteboardType]
 
-    public init(items: [PasteboardItem], changeCount: Int = 0, sourceBundleID: String? = nil) {
+    /// - Parameter declaredTypes: what `NSPasteboard.types` reported; `nil`
+    ///   (the default) uses the union of the items' types.
+    public init(
+        items: [PasteboardItem],
+        changeCount: Int = 0,
+        sourceBundleID: String? = nil,
+        declaredTypes: [PasteboardType]? = nil
+    ) {
         self.items = items
         self.changeCount = changeCount
         self.sourceBundleID = sourceBundleID
+        self.declaredTypes = declaredTypes ?? Self.union(of: items)
     }
 
     /// Every type across all items, in first-seen order. `NSPasteboard.types`
     /// reports the same union.
     public var types: [PasteboardType] {
+        Self.union(of: items)
+    }
+
+    /// `declaredTypes` and the items' types together, in first-seen order.
+    public var allTypes: [PasteboardType] {
         var seen = Set<PasteboardType>()
-        return items.flatMap(\.types).filter { seen.insert($0).inserted }
+        return (declaredTypes + items.flatMap(\.types)).filter { seen.insert($0).inserted }
     }
 
     /// The source app: the `org.nspasteboard.source` marker when it names
@@ -32,5 +51,10 @@ public struct PasteboardSnapshot: Sendable, Hashable {
             return marker
         }
         return frontmost
+    }
+
+    private static func union(of items: [PasteboardItem]) -> [PasteboardType] {
+        var seen = Set<PasteboardType>()
+        return items.flatMap(\.types).filter { seen.insert($0).inserted }
     }
 }
