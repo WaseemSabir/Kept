@@ -157,6 +157,58 @@ struct CaptureServiceTests {
         #expect(harness.store.recent.map(\.title) == ["kept"])
     }
 
+    @Test("Deleting a clip while a copy of it builds keeps it deleted; a later copy brings it back")
+    func deleteDuringBuild() async throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        harness.pasteboard.simulateCopy("delete me")
+        harness.service.captureCurrentContents()
+        await harness.service.waitUntilIdle()
+        let clip = try #require(harness.store.recent.first)
+
+        // Copied again, then deleted while that copy is still building.
+        let held = harness.pasteboard.simulateCopy("delete me")
+        await harness.gate.hold(held)
+        harness.service.captureCurrentContents()
+        await waitUntil { await harness.gate.hasArrived(held) }
+        try harness.store.delete(clip.id)
+        await harness.gate.release(held)
+        await harness.service.waitUntilIdle()
+        #expect(harness.store.recent.isEmpty)
+
+        harness.pasteboard.simulateCopy("delete me")
+        harness.service.captureCurrentContents()
+        await harness.service.waitUntilIdle()
+        #expect(harness.store.recent.map(\.title) == ["delete me"])
+    }
+
+    @Test("While every build is busy, a newer copy replaces the one waiting, and the newest is recorded")
+    func coalescesWaitingCopies() async throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        var held: [Int] = []
+        for index in 1...CaptureService.maxBuildsInFlight {
+            let copy = harness.pasteboard.simulateCopy("busy \(index)")
+            await harness.gate.hold(copy)
+            held.append(copy)
+            harness.service.captureCurrentContents()
+        }
+        harness.pasteboard.simulateCopy("replaced")
+        harness.service.captureCurrentContents()
+        harness.pasteboard.simulateCopy("newest")
+        harness.service.captureCurrentContents()
+        await waitUntil { await harness.gate.arrivedCount == CaptureService.maxBuildsInFlight }
+        #expect(await harness.gate.arrivedCount == CaptureService.maxBuildsInFlight, "no third build runs")
+
+        for copy in held {
+            await harness.gate.release(copy)
+        }
+        await harness.service.waitUntilIdle()
+        let busy = (1...CaptureService.maxBuildsInFlight).reversed().map { "busy \($0)" }
+        #expect(harness.store.recent.map(\.title) == ["newest"] + busy)
+        #expect(await harness.gate.arrivedCount == CaptureService.maxBuildsInFlight + 1)
+    }
+
     // MARK: Reading
 
     @Test("A read that saw the pasteboard change records nothing and builds nothing")
@@ -206,6 +258,23 @@ struct CaptureServiceTests {
         harness.service.captureCurrentContents(since: AppActivationTracker.now())
         await harness.service.waitUntilIdle()
         #expect(harness.store.recent.map(\.title) == ["a link from Safari"])
+    }
+
+    @Test("A copy is dropped when an excluded app's activation is logged just after the poll")
+    func excludedAppLoggedAfterThePoll() async throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        harness.activations.record("com.apple.Safari", at: AppActivationTracker.now())
+        let windowStart = AppActivationTracker.now()
+        harness.pasteboard.simulateCopy("one-time password")
+        harness.service.captureCurrentContents(since: windowStart)
+        // The main thread was busy: the password manager came up, copied
+        // and gave focus back before the poll, but its notifications were
+        // handled after it.
+        harness.activations.record("com.1password.1password", at: AppActivationTracker.now())
+        harness.activations.record("com.apple.Safari", at: AppActivationTracker.now())
+        await harness.service.waitUntilIdle()
+        #expect(harness.store.recent.isEmpty)
     }
 }
 
