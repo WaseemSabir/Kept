@@ -5,12 +5,26 @@ import Foundation
 /// Matching is case- and diacritic-insensitive and every whitespace-separated
 /// token must match. Each token scores by its best match: at the start of a
 /// word, anywhere, or (for tokens of three or more characters) as a
-/// subsequence near the start of the clip. Higher totals rank first; ties go
-/// to the most recently copied clip.
+/// subsequence of whole scalars near the start of the clip. Higher totals
+/// rank first; ties go to the most recently copied clip.
 public enum ClipSearch {
-    /// How far into a clip's search text a fuzzy (subsequence) match may reach.
+    /// How far into a clip's search text (in UTF-8 bytes) a fuzzy
+    /// (subsequence) match may reach.
     static let fuzzyWindow = 256
+    /// Tokens shorter than this many characters (as typed) never match
+    /// fuzzily, so one CJK character isn't matched piecemeal.
     static let minimumFuzzyTokenLength = 3
+
+    /// A folded query token.
+    struct Token: Sendable, Hashable {
+        var bytes: [UInt8]
+        var allowsFuzzy: Bool
+
+        init(_ text: some StringProtocol) {
+            bytes = SearchKey.fold(String(text))
+            allowsFuzzy = text.count >= ClipSearch.minimumFuzzyTokenLength
+        }
+    }
 
     /// Clips matching `query` and `filter`, best first. An empty query lists
     /// the pins (in pin order) and then the recent clips.
@@ -22,8 +36,8 @@ public enum ClipSearch {
     ) -> [Clip] {
         let tokens = query
             .split(whereSeparator: { $0.isWhitespace })
-            .map { SearchKey.fold(String($0)) }
-            .filter { !$0.isEmpty }
+            .map(Token.init)
+            .filter { !$0.bytes.isEmpty }
 
         guard !tokens.isEmpty else {
             return pinned.filter(filter.includes) + recent.filter(filter.includes)
@@ -57,7 +71,7 @@ public enum ClipSearch {
     }
 
     /// The summed token scores, or `nil` when some token doesn't match.
-    static func score(_ text: [UInt8], tokens: [[UInt8]]) -> Int? {
+    static func score(_ text: [UInt8], tokens: [Token]) -> Int? {
         var total = 0
         for token in tokens {
             guard let quality = match(token, in: text) else { return nil }
@@ -66,15 +80,19 @@ public enum ClipSearch {
         return total
     }
 
-    static func match(_ token: [UInt8], in text: [UInt8]) -> MatchQuality? {
+    static func match(_ token: Token, in text: [UInt8]) -> MatchQuality? {
         text.withUnsafeBufferPointer { haystack in
-            token.withUnsafeBufferPointer { needle in
-                match(needle, in: haystack)
+            token.bytes.withUnsafeBufferPointer { needle in
+                match(needle, in: haystack, allowsFuzzy: token.allowsFuzzy)
             }
         }
     }
 
-    private static func match(_ needle: UnsafeBufferPointer<UInt8>, in haystack: UnsafeBufferPointer<UInt8>) -> MatchQuality? {
+    private static func match(
+        _ needle: UnsafeBufferPointer<UInt8>,
+        in haystack: UnsafeBufferPointer<UInt8>,
+        allowsFuzzy: Bool
+    ) -> MatchQuality? {
         guard let needleStart = needle.baseAddress, let haystackStart = haystack.baseAddress,
               needle.count <= haystack.count
         else { return nil }
@@ -94,13 +112,40 @@ public enum ClipSearch {
         }
         if foundSubstring { return .substring }
 
-        guard needle.count >= minimumFuzzyTokenLength else { return nil }
+        guard allowsFuzzy else { return nil }
+        return isSubsequence(needle, of: haystack) ? .subsequence : nil
+    }
+
+    /// Whether the needle's scalars appear in order, each whole, among the
+    /// scalars that start in the first `fuzzyWindow` bytes of the haystack.
+    /// Both are valid UTF-8, so stepping by lead bytes stays on boundaries.
+    private static func isSubsequence(_ needle: UnsafeBufferPointer<UInt8>, of haystack: UnsafeBufferPointer<UInt8>) -> Bool {
+        guard let needleStart = needle.baseAddress, let haystackStart = haystack.baseAddress else { return false }
+        let window = min(haystack.count, fuzzyWindow)
+        var position = 0
         var next = 0
-        for byte in haystack.prefix(fuzzyWindow) where byte == needle[next] {
-            next += 1
-            if next == needle.count { return .subsequence }
+        while next < needle.count, position < window {
+            let length = scalarLength(leadByte: needle[next])
+            let fits = position + length <= haystack.count && next + length <= needle.count
+            if fits, haystack[position] == needle[next],
+               length == 1 || memcmp(haystackStart + position + 1, needleStart + next + 1, length - 1) == 0 {
+                next += length
+                position += length
+            } else {
+                position += scalarLength(leadByte: haystack[position])
+            }
         }
-        return nil
+        return next >= needle.count
+    }
+
+    /// How many bytes the UTF-8 sequence starting with `byte` takes.
+    private static func scalarLength(leadByte byte: UInt8) -> Int {
+        switch byte {
+        case 0xF0...: 4
+        case 0xE0...: 3
+        case 0xC0...: 2
+        default: 1
+        }
     }
 
     /// Whether a match after `byte` starts a word. Non-ASCII bytes count as
