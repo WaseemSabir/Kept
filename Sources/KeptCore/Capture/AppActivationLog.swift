@@ -26,6 +26,12 @@ public struct AppActivationLog: Sendable, Hashable {
     /// except the last of them (the app that stayed in front after it).
     public static let retention: Double = 120
 
+    /// How long after a poll an activation from before it may still be
+    /// logged. The app logs activations from notifications handled on the
+    /// main thread, as the poll is; when the main thread was busy, both
+    /// wait, and the poll may run first.
+    public static let lateNotificationAllowance: Double = 0.25
+
     /// Activations in time order.
     public private(set) var activations: [Activation] = []
 
@@ -63,5 +69,20 @@ public struct AppActivationLog: Sendable, Hashable {
     /// from `start` through `end`; `nil` when none was.
     public func excludedApp(from start: Double, through end: Double, settings: CaptureSettings) -> String? {
         frontmostApps(from: start, through: end).first { settings.excludes(bundleID: $0) }
+    }
+
+    /// When every activation from before a poll at `pollTime` has been
+    /// logged: `lateNotificationAllowance` after it.
+    public static func settledTime(afterPollAt pollTime: Double) -> Double {
+        pollTime + lateNotificationAllowance
+    }
+
+    /// The first excluded app frontmost at some moment from `start` through
+    /// `settledTime(afterPollAt: pollTime)`. Capture asks again with this
+    /// before recording a copy seen at the poll at `pollTime`, no sooner
+    /// than that time, so an activation logged just after the poll (its
+    /// notification queued behind it) still counts.
+    public func excludedApp(from start: Double, polledAt pollTime: Double, settings: CaptureSettings) -> String? {
+        excludedApp(from: start, through: Self.settledTime(afterPollAt: pollTime), settings: settings)
     }
 }

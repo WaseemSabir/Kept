@@ -62,6 +62,21 @@ struct AppActivationLogTests {
         #expect(log.frontmostApps(from: retention + 15, through: retention + 16) == ["b"])
     }
 
+    @Test("Checked again after the poll, an activation logged just after it counts")
+    func activationLoggedAfterThePoll() {
+        // The main thread was busy: the password manager came up and gave
+        // focus back before the poll at 10.0, but the notifications were
+        // handled (and logged) just after it.
+        let late = log((safari, 0), (onePassword, 10.05), (safari, 10.1))
+        #expect(late.excludedApp(from: 9.5, through: 10.0, settings: settings) == nil, "missed at the poll")
+        #expect(late.excludedApp(from: 9.5, polledAt: 10.0, settings: settings) == onePassword)
+        #expect(AppActivationLog.settledTime(afterPollAt: 10.0) == 10.0 + AppActivationLog.lateNotificationAllowance)
+
+        // Well after the poll is a new window's business.
+        let later = log((safari, 0), (onePassword, 10.0 + AppActivationLog.lateNotificationAllowance + 0.1))
+        #expect(later.excludedApp(from: 9.5, polledAt: 10.0, settings: settings) == nil)
+    }
+
     @Test("Puts a late activation in its place")
     func outOfOrder() {
         let log = log((safari, 0), (safari, 10), (onePassword, 5))

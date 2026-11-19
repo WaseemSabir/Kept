@@ -59,6 +59,17 @@ public struct PasteboardItem: Sendable, Hashable {
         return texts.isEmpty ? nil : texts.joined(separator: "\n")
     }
 
+    /// What pasting `items` as plain text writes: each item's `plainText`
+    /// as an item holding only that string, leaving out items without text.
+    /// `nil` when none has any (an image), so the caller writes the items
+    /// whole. Finds each item's text once, which takes a while for a big
+    /// RTF or HTML clip.
+    public static func plainTextItems(of items: [PasteboardItem]) -> [PasteboardItem]? {
+        let texts = items.compactMap(\.plainText)
+        guard !texts.isEmpty else { return nil }
+        return texts.map { PasteboardItem([ClipRepresentation(.string, string: $0)]) }
+    }
+
     /// Pasteboard strings are UTF-8; some apps add a trailing NUL.
     private static func decodeString(_ data: Data) -> String {
         var text = String(decoding: data, as: UTF8.self)

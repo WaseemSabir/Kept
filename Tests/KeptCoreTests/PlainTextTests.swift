@@ -35,4 +35,16 @@ struct PlainTextTests {
         #expect(PasteboardItem.plainText(of: [item((.png, "x"))]) == nil)
         #expect(PasteboardItem.plainText(of: []) == nil)
     }
+
+    @Test("Plain-text items keep each item's text and leave out the rest")
+    func plainTextItems() {
+        let items = [
+            item((.html, "<p>Hello <b>world</b></p>")),
+            PasteboardItem([ClipRepresentation(.png, Data([0x89, 0x50]))]),
+            item((.string, "second"), (.rtf, Self.rtf)),
+        ]
+        #expect(PasteboardItem.plainTextItems(of: items) == [item((.string, "Hello world")), item((.string, "second"))])
+        #expect(PasteboardItem.plainTextItems(of: [items[1]]) == nil)
+        #expect(PasteboardItem.plainTextItems(of: []) == nil)
+    }
 }

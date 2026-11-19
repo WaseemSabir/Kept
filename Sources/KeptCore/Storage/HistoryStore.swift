@@ -190,7 +190,7 @@ public final class HistoryStore {
     @discardableResult
     public func record(_ draft: ClipDraft, at date: Date = Date()) throws(HistoryStoreError) -> Clip {
         let staged: StagedClip
-        do {
+        do throws(ClipStager.Failure) {
             staged = try stager.stage(draft)
         } catch {
             discard(error.written)
