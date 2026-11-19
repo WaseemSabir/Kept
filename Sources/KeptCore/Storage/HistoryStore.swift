@@ -27,7 +27,14 @@ public final class HistoryStore {
     /// skipped or partly read rows, and a failed renumbering, prune or blob
     /// sweep (all retried at the next launch). At most `maxOpenWarnings`.
     public private(set) var openWarnings: [HistoryStoreError] = []
+    /// Goes up each time `clearUnpinned()` or `clearAll()` runs, so capture
+    /// can drop a clip whose copy was seen before the history was cleared
+    /// but whose build finished after.
+    @ObservationIgnored public private(set) var clearGeneration = 0
 
+    /// Writes large payloads to blob files off the main actor before
+    /// `record(_:at:)` (see `ClipStager`).
+    public nonisolated let stager: ClipStager
     /// The folder holding the database and the `blobs` folder.
     public let directory: URL
     private let inlineThreshold: Int
@@ -79,6 +86,7 @@ public final class HistoryStore {
         }
         try HistorySchema.migrate(database)
         blobs = try BlobStore(directory: directory.appendingPathComponent(Self.blobDirectoryName, isDirectory: true))
+        stager = ClipStager(blobs: blobs, inlineThreshold: inlineThreshold)
 
         try mapErrors {
             pinned = try fetchClips("pin_order IS NOT NULL ORDER BY pin_order, rowid")
@@ -106,36 +114,62 @@ public final class HistoryStore {
     /// The clip's pasteboard items with every representation's bytes, in the
     /// order they were captured.
     public func representations(for id: UUID) throws(HistoryStoreError) -> [PasteboardItem] {
+        try storedRepresentations(for: id).load()
+    }
+
+    /// The clip's representations of `types` only, item by item in the
+    /// order captured; items with none of them are left out. Reads no blob
+    /// file of another type, so showing a text clip's text never loads the
+    /// multi-megabyte image an app put next to it.
+    public func representations(
+        for id: UUID,
+        types: Set<PasteboardType>
+    ) throws(HistoryStoreError) -> [PasteboardItem] {
+        try storedRepresentations(for: id, types: types).load()
+    }
+
+    /// Finds the clip's representations (of `types`, or all of them) without
+    /// reading blob files, for `StoredRepresentations.load()` to read later,
+    /// off the main actor when they're big.
+    public func storedRepresentations(
+        for id: UUID,
+        types: Set<PasteboardType>? = nil
+    ) throws(HistoryStoreError) -> StoredRepresentations {
         try mapErrors {
             guard clip(withID: id) != nil else { throw HistoryStoreError.clipNotFound(id) }
-            let statement = try database.prepare("""
-                SELECT item_index, type, data, blob_hash FROM representations
-                WHERE clip_id = ? ORDER BY item_index, position
-                """)
-            try statement.bind(id.uuidString, at: 1)
+            let typeNames = types.map { $0.map(\.rawValue).sorted() } ?? []
+            if types != nil, typeNames.isEmpty { return StoredRepresentations(entries: [], blobs: blobs) }
 
-            var items: [PasteboardItem] = []
-            var currentItemIndex: Int?
+            var sql = "SELECT item_index, type, data, blob_hash, size FROM representations WHERE clip_id = ?"
+            if !typeNames.isEmpty {
+                sql += " AND type IN (" + Array(repeating: "?", count: typeNames.count).joined(separator: ", ") + ")"
+            }
+            sql += " ORDER BY item_index, position"
+            let statement = try database.prepare(sql)
+            try statement.bind(id.uuidString, at: 1)
+            for (offset, name) in typeNames.enumerated() {
+                try statement.bind(name, at: offset + 2)
+            }
+
+            var entries: [StoredRepresentations.Entry] = []
             while try statement.step() {
-                let itemIndex = statement.int(at: 0)
                 guard let type = statement.string(at: 1) else {
                     throw HistoryStoreError.corruptRecord("A representation of \(id) has no type.")
                 }
-                let data: Data
-                if let inline = statement.data(at: 2) {
-                    data = inline
-                } else if let hash = statement.string(at: 3) {
-                    data = try blobs.read(hash)
-                } else {
+                let inline = statement.data(at: 2)
+                let hash = inline == nil ? statement.string(at: 3) : nil
+                guard inline != nil || hash != nil else {
                     throw HistoryStoreError.corruptRecord("A representation of \(id) has no data.")
                 }
-                if itemIndex != currentItemIndex {
-                    items.append(PasteboardItem([]))
-                    currentItemIndex = itemIndex
-                }
-                items[items.count - 1].representations.append(ClipRepresentation(PasteboardType(type), data))
+                entries.append(StoredRepresentations.Entry(
+                    itemIndex: statement.int(at: 0),
+                    type: PasteboardType(type),
+                    size: statement.int(at: 4),
+                    inlineData: inline,
+                    blobHash: hash
+                ))
             }
-            return items
+            return StoredRepresentations(entries: entries, blobs: blobs)
         }
     }
 
@@ -145,9 +179,24 @@ public final class HistoryStore {
     /// moves that clip to the top: `lastCopiedAt` becomes `date`,
     /// `copyCount` goes up by one, and the representations, kind, title and
     /// source are refreshed. Pins stay pinned. Prunes past the limit.
+    ///
+    /// Writes large payloads to blob files here, on the main actor; capture
+    /// stages them off it first and records the `StagedClip` instead.
     @discardableResult
     public func record(_ draft: ClipDraft, at date: Date = Date()) throws(HistoryStoreError) -> Clip {
-        try mapErrors {
+        try record(stager.stage(draft), at: date)
+    }
+
+    /// Records a clip whose blob files `stager` already wrote, as
+    /// `record(_:at:)` does for a draft; only database rows are written
+    /// here (a blob file that has gone missing meanwhile is written again).
+    /// Ends the staging either way: if recording fails, the blob files are
+    /// deleted unless another clip uses them.
+    @discardableResult
+    public func record(_ staged: StagedClip, at date: Date = Date()) throws(HistoryStoreError) -> Clip {
+        defer { discard(staged) }
+        let draft = staged.draft
+        return try mapErrors {
             let existing = pinned.first { $0.contentHash == draft.contentHash }
                 ?? recent.first { $0.contentHash == draft.contentHash }
             let clip = Clip(
@@ -165,9 +214,9 @@ public final class HistoryStore {
                 metadata: draft.metadata
             )
 
-            // Blob files go first (flushed to disk), so a committed row never
-            // points at a missing file.
-            let representations = try storeRepresentations(of: draft.items)
+            // Blob files go first (flushed to disk, usually by the stager), so
+            // a committed row never points at a missing file.
+            let representations = try storeRepresentations(of: draft.items, staged: staged.blobHashes)
             var replacedBlobs = try existing.map { try blobHashes(of: [$0.id]) } ?? []
             // A row with the same content that wasn't loaded (unreadable, or
             // from a newer Kept) gives way to the new copy.
@@ -193,6 +242,13 @@ public final class HistoryStore {
             try? removeBlobsIfUnreferenced(replacedBlobs)
             return clip
         }
+    }
+
+    /// Lets go of a staged clip that won't be recorded, deleting its blob
+    /// files unless a clip (or another staged clip) uses them.
+    public func discard(_ staged: StagedClip) {
+        staged.reservation.release()
+        try? removeBlobsIfUnreferenced(staged.blobHashes)
     }
 
     /// Moves a clip to the top after it was pasted from Kept.
@@ -269,6 +325,7 @@ public final class HistoryStore {
 
     /// Deletes every unpinned clip; pins stay.
     public func clearUnpinned() throws(HistoryStoreError) {
+        clearGeneration += 1
         try mapErrors {
             let candidates = try blobHashes(
                 query: """
@@ -282,8 +339,10 @@ public final class HistoryStore {
         }
     }
 
-    /// Deletes everything, pins included.
+    /// Deletes everything, pins included. Blob files reserved for clips not
+    /// recorded yet stay until those are recorded or discarded.
     public func clearAll() throws(HistoryStoreError) {
+        clearGeneration += 1
         try mapErrors {
             try database.run("DELETE FROM clips")
             pinned = []
@@ -448,7 +507,7 @@ public final class HistoryStore {
 
     // MARK: Representations and blobs
 
-    private struct StoredRepresentation {
+    private struct RepresentationRow {
         var itemIndex: Int
         var position: Int
         var type: PasteboardType
@@ -458,28 +517,36 @@ public final class HistoryStore {
         var size: Int
     }
 
-    /// Writes large payloads to the blob store and describes every row to
-    /// insert. Hashes `ClipBuilder` already worked out are reused.
-    private func storeRepresentations(of items: [PasteboardItem]) throws -> [StoredRepresentation] {
-        var stored: [StoredRepresentation] = []
+    /// Describes every row to insert, writing large payloads to the blob
+    /// store unless they're among the `staged` blobs and their files exist.
+    /// Hashes `ClipBuilder` or the stager already worked out are reused.
+    private func storeRepresentations(of items: [PasteboardItem], staged: Set<String>) throws -> [RepresentationRow] {
+        var rows: [RepresentationRow] = []
         for (itemIndex, item) in items.enumerated() {
             for (position, representation) in item.representations.enumerated() {
                 let size = representation.data.count
-                let isLarge = size > inlineThreshold
-                stored.append(StoredRepresentation(
+                var blobHash: String?
+                if size > inlineThreshold {
+                    if let hash = representation.sha256, staged.contains(hash), blobs.contains(hash) {
+                        blobHash = hash
+                    } else {
+                        blobHash = try blobs.write(representation.data, hash: representation.sha256)
+                    }
+                }
+                rows.append(RepresentationRow(
                     itemIndex: itemIndex,
                     position: position,
                     type: representation.type,
-                    data: isLarge ? nil : representation.data,
-                    blobHash: isLarge ? try blobs.write(representation.data, hash: representation.sha256) : nil,
+                    data: blobHash == nil ? representation.data : nil,
+                    blobHash: blobHash,
                     size: size
                 ))
             }
         }
-        return stored
+        return rows
     }
 
-    private func insert(_ representations: [StoredRepresentation], for id: UUID) throws {
+    private func insert(_ representations: [RepresentationRow], for id: UUID) throws {
         let statement = try database.prepare("""
             INSERT INTO representations (clip_id, item_index, position, type, data, blob_hash, size)
             VALUES (?, ?, ?, ?, ?, ?, ?)

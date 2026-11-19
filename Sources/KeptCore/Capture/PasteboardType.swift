@@ -42,6 +42,18 @@ public struct PasteboardType: RawRepresentable, Sendable, Hashable, Codable,
     /// Image types, in the order Kept picks the primary image.
     public static let images: [PasteboardType] = [.png, .tiff, .jpeg, .heic]
 
+    /// The one image type to read from an item that offers several: PNG,
+    /// then JPEG or HEIC (already compressed), then TIFF (a screenshot's
+    /// TIFF can be tens of megabytes; Kept re-encodes it as PNG). Apps put
+    /// the same picture in every image type, so reading one is enough.
+    /// `nil` when `types` has no image type.
+    public static func preferredImageType(in types: some Sequence<PasteboardType>) -> PasteboardType? {
+        let offered = Set(types)
+        return imageReadingOrder.first { offered.contains($0) }
+    }
+
+    private static let imageReadingOrder: [PasteboardType] = [.png, .jpeg, .heic, .tiff]
+
     // MARK: Markers (nspasteboard.org and Apple)
 
     /// The bundle ID of the app that wrote the pasteboard (may be empty).

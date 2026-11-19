@@ -13,7 +13,10 @@
 /// joiners and what they join, variation selectors, tags, skin tones,
 /// conjoining jamo) without resetting on a joiner; a final pass over the
 /// result's characters enforces the limit exactly.
-enum TextSanitizer {
+///
+/// `multiline(_:maxUTF16Count:)` applies the same rules but keeps spaces,
+/// tabs and line breaks, for text laid out on several lines (the preview).
+public enum TextSanitizer {
     /// The most combining marks kept in one character.
     static let maxCombiningMarks = 8
 
@@ -69,6 +72,145 @@ enum TextSanitizer {
         text.unicodeScalars.contains { !$0.properties.isWhitespace && keeps($0) }
     }
 
+    // MARK: Multi-line text
+
+    /// `text` made safe to lay out on several lines: the scalars
+    /// `singleLine(_:maxCharacters:)` drops are dropped and every character
+    /// is capped the same way, but spaces and tabs stay, and every line
+    /// break (CRLF, CR, vertical tab, form feed, NEL, U+2028, U+2029) becomes
+    /// one LF. The result is at most `maxUTF16Count` UTF-16 code units long,
+    /// cut on a character boundary; `isTruncated` says whether anything was
+    /// cut. Linear in the length of `text`, and stops reading it once the
+    /// limit is reached.
+    public static func multiline(_ text: String, maxUTF16Count: Int) -> (text: String, isTruncated: Bool) {
+        let limit = max(0, maxUTF16Count)
+        // Room past the limit so the final cut can land on a character boundary.
+        let budget = limit + 2 * boundarySlack
+        var output = String.UnicodeScalarView()
+        var units = 0
+        var isTruncated = false
+        var caps = CharacterCaps()
+        var afterCarriageReturn = false
+
+        func trimJoiners(ifTruncated wasTruncated: Bool) {
+            guard wasTruncated else { return }
+            while let last = output.last, isJoiner(last) {
+                output.removeLast()
+                units -= UTF16.width(last)
+            }
+        }
+
+        /// Appends `scalar`, or returns `false` once the budget is spent.
+        func append(_ scalar: Unicode.Scalar) -> Bool {
+            let width = UTF16.width(scalar)
+            guard units + width <= budget else {
+                isTruncated = true
+                return false
+            }
+            output.append(scalar)
+            units += width
+            return true
+        }
+
+        for scalar in text.unicodeScalars {
+            if scalar == "\n", afterCarriageReturn {
+                afterCarriageReturn = false
+                continue
+            }
+            if isLineBreak(scalar) {
+                // Nothing joins across a line break.
+                trimJoiners(ifTruncated: caps.boundary(startingScalars: 0))
+                afterCarriageReturn = scalar == "\r"
+                guard append("\n") else { break }
+                continue
+            }
+            if scalar.properties.isWhitespace {
+                // Marks after a space form a character with it; a tab is a control.
+                trimJoiners(ifTruncated: caps.boundary(startingScalars: scalar == "\t" ? 0 : 1))
+                afterCarriageReturn = false
+                guard append(scalar) else { break }
+                continue
+            }
+            guard keeps(scalar) else { continue }
+            afterCarriageReturn = false
+            switch caps.step(scalar) {
+            case .dropped:
+                continue
+            case .startsCharacter(let previousWasTruncated):
+                trimJoiners(ifTruncated: previousWasTruncated)
+            case .extendsCharacter:
+                break
+            }
+            guard append(scalar) else { break }
+        }
+        trimJoiners(ifTruncated: caps.boundary(startingScalars: 0))
+
+        var result = trimmingTrailingJoiners(capCharacters(String(output)))
+        guard result.utf16.count > limit else { return (result, isTruncated) }
+
+        var end = result.startIndex
+        var used = 0
+        for index in result.indices {
+            let width = result[index].utf16.count
+            if used + width > limit { break }
+            used += width
+            end = result.index(after: index)
+        }
+        if end == result.startIndex {
+            // The first character alone is over the limit: cut between scalars.
+            var scalars = String.UnicodeScalarView()
+            used = 0
+            for scalar in result.unicodeScalars {
+                let width = UTF16.width(scalar)
+                if used + width > limit { break }
+                used += width
+                scalars.append(scalar)
+            }
+            result = String(scalars)
+        } else {
+            result = String(result[..<end])
+        }
+        return (trimmingTrailingJoiners(result), true)
+    }
+
+    /// How many lines `text` has: one more than its line breaks (LF, CR or
+    /// CRLF, vertical tab, form feed, NEL, U+2028, U+2029: what
+    /// `Character.isNewline` counts). Counted on UTF-8 bytes, so a long text
+    /// takes milliseconds, not a walk over its characters.
+    public static func lineCount(of text: String) -> Int {
+        var text = text
+        return text.withUTF8 { bytes in
+            var count = 1
+            var index = 0
+            let end = bytes.count
+            while index < end {
+                switch bytes[index] {
+                case 0x0A, 0x0B, 0x0C:
+                    count += 1
+                case 0x0D:
+                    count += 1
+                    if index + 1 < end, bytes[index + 1] == 0x0A { index += 1 }
+                case 0xC2:
+                    // U+0085 NEL.
+                    if index + 1 < end, bytes[index + 1] == 0x85 {
+                        count += 1
+                        index += 1
+                    }
+                case 0xE2:
+                    // U+2028 LINE SEPARATOR and U+2029 PARAGRAPH SEPARATOR.
+                    if index + 2 < end, bytes[index + 1] == 0x80, bytes[index + 2] == 0xA8 || bytes[index + 2] == 0xA9 {
+                        count += 1
+                        index += 2
+                    }
+                default:
+                    break
+                }
+                index += 1
+            }
+            return count
+        }
+    }
+
     // MARK: Collapsing
 
     /// Collapses whitespace, drops unsafe scalars and caps each character's
@@ -77,51 +219,33 @@ enum TextSanitizer {
         var output = String.UnicodeScalarView()
         var count = 0
         var pendingSpace = false
-        /// The last scalar of the input that was kept or dropped for a cap
-        /// (whatever was dropped as unsafe never joins anything).
-        var previous: Unicode.Scalar?
-        var clusterScalars = 0
-        var clusterMarks = 0
-        var clusterTruncated = false
+        var caps = CharacterCaps()
 
-        /// Ends the current character. If its tail was cut, a joiner left at
-        /// the end would glue the next character onto it, so it goes.
-        func finishCluster() {
-            if clusterTruncated {
-                while let last = output.last, isJoiner(last) {
-                    output.removeLast()
-                    count -= 1
-                }
+        /// A character whose tail was cut mustn't end in a joiner, which
+        /// would glue the next character onto it.
+        func trimJoiners(ifTruncated wasTruncated: Bool) {
+            guard wasTruncated else { return }
+            while let last = output.last, isJoiner(last) {
+                output.removeLast()
+                count -= 1
             }
-            clusterScalars = 0
-            clusterMarks = 0
-            clusterTruncated = false
         }
 
         for scalar in text.unicodeScalars {
             if scalar.properties.isWhitespace {
-                finishCluster()
-                pendingSpace = count > 0
                 // Marks after a space form a character with it.
-                clusterScalars = 1
-                previous = nil
+                trimJoiners(ifTruncated: caps.boundary(startingScalars: 1))
+                pendingSpace = count > 0
                 continue
             }
             guard keeps(scalar) else { continue }
-
-            let isMark = isCombiningMark(scalar)
-            let continues = previous.map { continuesCharacter(scalar, after: $0) } ?? isExtending(scalar)
-            previous = scalar
-            if continues {
-                clusterScalars += 1
-                if isMark { clusterMarks += 1 }
-                if clusterScalars > maxScalarsPerCharacter || (isMark && clusterMarks > maxCombiningMarks) {
-                    clusterTruncated = true
-                    continue
-                }
-            } else {
-                finishCluster()
-                clusterScalars = 1
+            switch caps.step(scalar) {
+            case .dropped:
+                continue
+            case .startsCharacter(let previousWasTruncated):
+                trimJoiners(ifTruncated: previousWasTruncated)
+            case .extendsCharacter:
+                break
             }
 
             let needed = pendingSpace ? 2 : 1
@@ -133,8 +257,63 @@ enum TextSanitizer {
             output.append(scalar)
             count += needed
         }
-        finishCluster()
+        trimJoiners(ifTruncated: caps.boundary(startingScalars: 0))
         return String(output)
+    }
+
+    /// Follows the character being built from a stream of kept scalars and
+    /// applies the per-character caps to it.
+    private struct CharacterCaps {
+        enum Step {
+            /// The scalar begins a new character; the one before it lost
+            /// scalars to a cap when `previousWasTruncated`.
+            case startsCharacter(previousWasTruncated: Bool)
+            case extendsCharacter
+            /// Over a cap: leave the scalar out.
+            case dropped
+        }
+
+        /// The last scalar seen, kept or dropped for a cap (scalars dropped
+        /// as unsafe never join anything, so they aren't passed in).
+        private var previous: Unicode.Scalar?
+        private var scalars = 0
+        private var marks = 0
+        private var isTruncated = false
+
+        mutating func step(_ scalar: Unicode.Scalar) -> Step {
+            let isMark = TextSanitizer.isCombiningMark(scalar)
+            let continues = previous.map { TextSanitizer.continuesCharacter(scalar, after: $0) }
+                ?? TextSanitizer.isExtending(scalar)
+            previous = scalar
+            if continues {
+                scalars += 1
+                if isMark { marks += 1 }
+                if scalars > TextSanitizer.maxScalarsPerCharacter
+                    || (isMark && marks > TextSanitizer.maxCombiningMarks) {
+                    isTruncated = true
+                    return .dropped
+                }
+                return .extendsCharacter
+            }
+            let wasTruncated = isTruncated
+            scalars = 1
+            marks = 0
+            isTruncated = false
+            return .startsCharacter(previousWasTruncated: wasTruncated)
+        }
+
+        /// Ends the current character at whitespace, a line break or the end
+        /// of the text, returning whether it was truncated. The next
+        /// character starts with `startingScalars` already counted (1 after a
+        /// space, which marks attach to).
+        mutating func boundary(startingScalars: Int) -> Bool {
+            let wasTruncated = isTruncated
+            previous = nil
+            scalars = startingScalars
+            marks = 0
+            isTruncated = false
+            return wasTruncated
+        }
     }
 
     /// Enforces `maxScalarsPerCharacter` on the final characters, which the
@@ -178,6 +357,15 @@ enum TextSanitizer {
             return value == 0x200C || value == 0x200D || (0xE0020...0xE007F).contains(value)
         default:
             return !scalar.properties.isNoncharacterCodePoint
+        }
+    }
+
+    /// Scalars that end a line: LF, VT, FF, CR, NEL, LINE SEPARATOR and
+    /// PARAGRAPH SEPARATOR.
+    private static func isLineBreak(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x0A...0x0D, 0x85, 0x2028, 0x2029: true
+        default: false
         }
     }
 

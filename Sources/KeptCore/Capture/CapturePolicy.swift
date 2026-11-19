@@ -6,6 +6,13 @@
 public struct CapturePolicy: Sendable {
     public var settings: CaptureSettings
 
+    /// The most pasteboard items one copy may have. Finder writes one item
+    /// per file, so this is the most files a clip holds; reading thousands
+    /// of items (each one a round trip to the pasteboard server) would stall
+    /// the main thread, and a clip that held only some of them would paste
+    /// the wrong selection, so bigger copies are skipped (`.tooManyItems`).
+    public static let maxItems = 1_000
+
     public init(settings: CaptureSettings = CaptureSettings()) {
         self.settings = settings
     }

@@ -22,6 +22,9 @@ public enum IgnoreReason: Sendable, Hashable {
     case excludedApp(String)
     /// Only images or files, and capturing that kind is turned off.
     case kindDisabled(ClipKind)
+    /// More pasteboard items than `CapturePolicy.maxItems` (thousands of
+    /// files selected in Finder, say).
+    case tooManyItems
     /// Nothing Kept captures: no types, or only types it skips.
     case empty
 }

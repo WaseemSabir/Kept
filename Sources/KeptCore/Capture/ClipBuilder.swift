@@ -24,11 +24,14 @@ public struct ClipBuilder: Sendable {
 
     /// The draft for `snapshot`, or `nil` when there's nothing worth keeping:
     /// a privacy marker (concealed, transient or auto-generated, in the
-    /// items or `declaredTypes`), no supported types, only whitespace, a
-    /// disabled kind, or a primary payload over `settings.maxItemBytes`.
+    /// items or `declaredTypes`), more than `CapturePolicy.maxItems` items,
+    /// no supported types, only whitespace, a disabled kind, or a primary
+    /// payload over `settings.maxItemBytes`.
     public func build(from snapshot: PasteboardSnapshot) -> ClipDraft? {
-        // Defence in depth: the policy should have stopped these already.
-        guard snapshot.allTypes.allSatisfy({ !CapturePolicy.privacyMarkers.contains($0) }) else { return nil }
+        // Defence in depth: the policy and the reader should have stopped these already.
+        guard snapshot.allTypes.allSatisfy({ !CapturePolicy.privacyMarkers.contains($0) }),
+              snapshot.items.count <= CapturePolicy.maxItems
+        else { return nil }
 
         let items = supportedItems(of: snapshot.items)
         guard !items.isEmpty else { return nil }

@@ -6,8 +6,15 @@ import Foundation
 /// place, readable only by the user (0600) in a private directory (0700).
 /// Writing the same bytes twice stores them once; an existing file is reused
 /// only after checking that it really holds those bytes.
+///
+/// Plain file I/O, safe from any thread. Capture writes blobs off the main
+/// actor (`ClipStager`) before the clip is recorded, reserving them first;
+/// `remove(_:)` and `removeAll(except:)` leave reserved blobs alone.
 struct BlobStore: Sendable {
     let directory: URL
+    /// Blobs written for clips that aren't recorded yet. Shared by every
+    /// copy of this value.
+    let reservations = BlobReservations()
 
     private static let temporaryPrefix = ".tmp-"
     /// Temporary files younger than this may belong to a write in progress
@@ -61,14 +68,17 @@ struct BlobStore: Sendable {
         Self.isValidHash(hash) && FileManager.default.fileExists(atPath: url(for: hash).path)
     }
 
+    /// Deletes the blob unless it's reserved for a clip being recorded.
     func remove(_ hash: String) throws(HistoryStoreError) {
         guard Self.isValidHash(hash) else { return }
         let location = url(for: hash)
-        guard FileManager.default.fileExists(atPath: location.path) else { return }
-        do {
-            try FileManager.default.removeItem(at: location)
-        } catch {
-            throw .fileSystem(path: location.path, reason: error.localizedDescription)
+        try reservations.unlessReserved(hash) { () throws(HistoryStoreError) in
+            guard FileManager.default.fileExists(atPath: location.path) else { return }
+            do {
+                try FileManager.default.removeItem(at: location)
+            } catch {
+                throw .fileSystem(path: location.path, reason: error.localizedDescription)
+            }
         }
     }
 
@@ -77,10 +87,10 @@ struct BlobStore: Sendable {
         Set(try fileNames().filter(Self.isValidHash))
     }
 
-    /// Deletes every blob not in `referenced`, plus temporary files left by
-    /// interrupted writes that are older than `gracePeriod`. Tries every
-    /// file before reporting the first failure. Returns how many files were
-    /// removed.
+    /// Deletes every blob not in `referenced` (and not reserved), plus
+    /// temporary files left by interrupted writes that are older than
+    /// `gracePeriod`. Tries every file before reporting the first failure.
+    /// Returns how many files were removed.
     @discardableResult
     func removeAll(
         except referenced: Set<String>,
@@ -98,8 +108,11 @@ struct BlobStore: Sendable {
                 continue
             }
             do {
-                try FileManager.default.removeItem(at: location)
-                removed += 1
+                // Temporary names are never reserved, so they go unconditionally.
+                let didRemove = try reservations.unlessReserved(name) {
+                    try FileManager.default.removeItem(at: location)
+                }
+                if didRemove { removed += 1 }
             } catch {
                 firstFailure = firstFailure ?? .fileSystem(path: location.path, reason: error.localizedDescription)
             }
