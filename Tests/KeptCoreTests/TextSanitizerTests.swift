@@ -49,6 +49,59 @@ struct TextSanitizerTests {
         #expect(odd.utf8.count == 8 * 1024 - 1)
     }
 
+    @Test("Caps characters glued together with joiners, tags and modifiers", arguments: [
+        "\u{200D}", "\u{200C}", "\u{E0061}", "\u{1F3FD}", "\u{FE0F}", "\u{0301}\u{200D}", "\u{200D}👍",
+        "\u{0301}\u{1F3FD}\u{E0062}\u{200D}",
+    ])
+    func capsGluedCharacters(glue: String) {
+        let hostile = "a" + String(repeating: glue, count: 5_000) + "b c"
+        for result in [TextSanitizer.singleLine(hostile), TextSanitizer.searchable(hostile)] {
+            #expect(result.allSatisfy { $0.unicodeScalars.count <= TextSanitizer.maxScalarsPerCharacter })
+            #expect(result.unicodeScalars.filter { $0.properties.generalCategory == .nonspacingMark }.count
+                <= TextSanitizer.maxCombiningMarks)
+            #expect(result.hasSuffix("b c"), "lost the text after the glue: \(result.unicodeScalars.count) scalars")
+            #expect(result.unicodeScalars.last?.value != 0x200D)
+        }
+    }
+
+    @Test("Caps an emoji ZWJ chain and keeps real sequences whole")
+    func capsZWJChains() {
+        let chain = String(repeating: "😀\u{200D}", count: 3_000) + "😀"
+        let title = TextSanitizer.singleLine(chain + " end")
+        #expect(title.allSatisfy { $0.unicodeScalars.count <= TextSanitizer.maxScalarsPerCharacter })
+        #expect(title.hasSuffix(" end"))
+
+        let family = "👨🏽\u{200D}👩🏽\u{200D}👧🏽\u{200D}👦🏽"  // 11 scalars
+        #expect(TextSanitizer.singleLine(family) == family)
+        #expect(TextSanitizer.searchable("\(family) ok") == "\(family) ok")
+    }
+
+    @Test("Never empties the search text of visible text")
+    func keepsSearchTextNonEmpty() {
+        let giant = "x" + String(repeating: "\u{0301}\u{200D}", count: 10_000)
+        #expect(!TextSanitizer.searchable(giant).isEmpty)
+        #expect(!TextSanitizer.searchable(giant, maxUTF8Bytes: 4).isEmpty)
+        #expect(TextSanitizer.searchable("👍🏽", maxUTF8Bytes: 4) == "👍")
+        #expect(TextSanitizer.searchable("  \n ").isEmpty)
+    }
+
+    @Test("Doesn't end a title on a dangling joiner")
+    func trimsDanglingJoiners() {
+        #expect(TextSanitizer.singleLine("a\u{200D}b", maxCharacters: 1) == "a")
+        #expect(TextSanitizer.singleLine("word\u{200D}") == "word")
+        #expect(TextSanitizer.singleLine("👨\u{200D}👩\u{200D}👧") == "👨\u{200D}👩\u{200D}👧")
+    }
+
+    @Test("Sanitizes long hostile text in near-linear time")
+    func sanitizesQuickly() {
+        let hostile = String(repeating: "a" + String(repeating: "\u{200D}\u{1F3FD}\u{E0061}\u{0301}", count: 50), count: 20_000)
+        let elapsed = ContinuousClock().measure {
+            _ = TextSanitizer.singleLine(hostile)
+            _ = TextSanitizer.searchable(hostile)
+        }
+        #expect(elapsed < .seconds(5))
+    }
+
     @Test("Tells visible content from whitespace and invisible characters")
     func detectsVisibleContent() {
         #expect(TextSanitizer.hasVisibleContent(" x "))
