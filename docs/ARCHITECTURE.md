@@ -44,7 +44,7 @@ Sources/
                               StoredRepresentations, ClipStager (+ StagedClip)
     Search/                   ClipSearch (matching, ranking, kind filter), SearchKey (folded text)
     Preferences/              Preferences (UserDefaults-backed), PreferenceDefaults (every default), PanelPosition,
-                              PanelPlacement (where the panel goes for each position)
+                              PanelPlacement (where the panel goes for each position), RetentionPeriod
     Support/                  SHA256, TextSanitizer, RTF/HTML text extractors, LRUCache, SharedLoads
   Kept/                       macOS app (executable target)
     App/                      main.swift, AppDelegate, AppEnvironment (composition root)
@@ -59,8 +59,9 @@ Sources/
     PasteHint/                PasteHintController (+ PasteHintPresenting), HintPanel, PasteHintView, PasteHintCopy
     Hotkeys/                  KeyboardShortcuts.Name definitions + HotkeyController
     Panel/                    FloatingPanel (NSPanel), PanelController, PanelViewModel, PanelKeyRouter
-                              (+ KeyPress, PanelCommand), ClipDisplay, ClipFacts, ClipAccessibility,
-                              MatchHighlighter, PreviewLoader, Views/
+                              (+ KeyPress, PanelCommand, PanelKeyMode), PanelEditing, ClipMenu, ClipDisplay,
+                              ClipFacts, ClipAccessibility, MatchHighlighter, PreviewLoader, Views/ (+ RenameField,
+                              TextEditPane, ClipTextEditor)
     MenuBar/                  StatusItemController, StatusMenu (+ StatusMenuState), MenuBarIcon,
                               MenuBarIconPreference
     Settings/                 SettingsWindowController, SettingsWindow, SettingsTabViewController,
@@ -72,7 +73,7 @@ Sources/
     DesignSystem/             Theme (tokens), AdaptiveColor, Marker (highlighter), KeyCap, Hairline
     Snapshots/                SnapshotRenderer, SettingsSnapshots, SampleHistory (`Kept --render-snapshots <dir>`)
     Support/                  IconCache, ThumbnailCache, AgeFormatter, Log,
-                              ActiveAppTracker (+ FocusReturn)
+                              ActiveAppTracker (+ FocusReturn), RetentionScheduler
 Tests/
   KeptCoreTests/              Swift Testing (`import Testing`); runs on Linux + macOS
   KeptTests/                  macOS-only tests for app-layer logic that can't live in core
@@ -88,17 +89,21 @@ Resources are **not** SwiftPM `resources:`; the bundle script copies them into
 ## Key types (KeptCore)
 
 - `Clip` — one history entry, without its payload: `id` (UUID), `kind`,
-  `title` (sanitized single line, ≤1,000 chars), `searchText` (sanitized,
+  `title` (sanitized single line, ≤1,000 chars), `customTitle` (the name
+  the user gave it, sanitized the same way, ≤200 chars; `nil` for none),
+  `displayTitle` (the name, else the title), `searchText` (sanitized,
   ≤8 KB), `contentHash` (SHA-256 of the primary payload, the dedup key),
   `sourceBundleID`, `firstCopiedAt`, `lastCopiedAt`, `copyCount`, `pinOrder`
   (`nil` = not pinned; `isPinned`), `byteSize`, and `metadata`
   (`ClipMetadata`: character count, `looksLikeCode`, link host, color hex,
   image pixel size and type, file count). Each clip caches its folded search
-  text, so searching never re-normalizes; folding non-ASCII text goes
+  text (the name, a line break, then `searchText`), so searching never
+  re-normalizes and finds a clip by its name too; folding non-ASCII text goes
   through per-Unicode-block tables built once (`SearchKey`), not Foundation.
 - `ClipKind` — `.text`, `.richText`, `.link`, `.image`, `.file`, `.color`.
   Code-like text is `.text`/`.richText` with `metadata.looksLikeCode`, used
-  only for rendering. `ClipFilter` — `all, pinned, text, links, images,
+  only for rendering. `isTextLike` (all but images and files) is what can
+  be edited as text. `ClipFilter` — `all, pinned, text, links, images,
   files` (`text` covers rich text, colors and code).
 - `ClipRepresentation` — one pasteboard type of a clip (`type`, `data`).
   `PasteboardItem` — one pasteboard item: its representations in order;
@@ -144,6 +149,8 @@ Resources are **not** SwiftPM `resources:`; the bundle script copies them into
   too big), detects the kind (files, visible string, images, URL, then
   HTML/RTF text; rich text judged after the cap), derives title, search
   text, metadata and hash, and pre-hashes representations over 64 KB.
+  `draft(forEditedText:)` describes typed text the same way (one plain
+  string item, no size cap), for edits.
   Hashes are domain-separated: text is hashed as NFC with LF line endings,
   images as every primary image's digest in order, files as their URLs.
   Image sizes come from an injected `ImageInspecting` (core reads PNG; the
@@ -164,7 +171,12 @@ Resources are **not** SwiftPM `resources:`; the bundle script copies them into
   `unpin(_:at:)` (back to the top of the history), `movePin(_:toIndex:)`,
   `delete(_:at:)` (remembers when each of the last 64 deleted contents
   went, for `wasDeleted(_:after:)`), `clearUnpinned`, `clearAll` (both
-  bump `clearGeneration`), `setHistoryLimit`. Reading: `representations(for:)` (every type) and
+  bump `clearGeneration`), `setHistoryLimit`, `forgetUnpinned(olderThan:)`
+  (unpinned clips last copied before a cutoff; rows at once, unreferenced
+  blob files on a background queue; returns how many went),
+  `rename(_:to:)` (sets or clears `customTitle`; blank or the generated
+  title clears; the clip stays in place) and `editText(_:to:at:)` (see
+  below). `record` keeps a re-copied clip's name. Reading: `representations(for:)` (every type) and
   `representations(for:types:)` (only those, so a text clip's text never
   loads the picture next to it), or `storedRepresentations(for:types:)`,
   which only queries the database and returns a `Sendable`
@@ -179,6 +191,21 @@ Resources are **not** SwiftPM `resources:`; the bundle script copies them into
   Opening throws only when the history is unusable: unreadable rows are
   skipped and left alone (`skippedRecordCount`), and failed renumbering,
   pruning or blob sweeps at open land in `openWarnings`.
+- `HistoryStore.editText(_:to:at:)` — replaces a text-like clip's content
+  with plain text: one `.string` representation, kind, title, search text,
+  metadata and hash from `ClipBuilder.draft(forEditedText:)` (text can
+  become a link or a color and back; rich text loses its formatting). The
+  clip keeps its ID, pin, name, copy count, source and dates. If another
+  clip already holds the new content, the two merge into the edited one:
+  it takes the other's pin when it has none (its place among the pins),
+  its name when it has none, its copies (counts add up), the earlier first
+  and later last copy; the other row goes. The old content is noted as
+  deleted at `at`, so a capture of it seen before the edit and finished
+  after is dropped (`wasDeleted`), while one made after records as usual;
+  `clearGeneration` doesn't move, so other captures in flight still land.
+  Large text goes through `stager.stage` first, so its blob is reserved.
+  Images and files throw `.notEditable`, text with nothing visible
+  `.emptyText`.
 - `LRUCache` — a value type keeping the most recently used values within
   a count and a total cost (bytes). `SharedLoads` — `@MainActor`: one
   detached load per key at a time, shared by every caller asking for it;
@@ -194,6 +221,8 @@ Resources are **not** SwiftPM `resources:`; the bundle script copies them into
   (including the history sizes Settings offers). Excluded apps are edited
   with `excludeApp`, `removeExcludedApps` and `restoreDefaultExcludedApps`
   (bundle IDs compare without regard to case, as capture compares them).
+  `forgetAfter` is a `RetentionPeriod` (`never`, `day`, `week`, `month` =
+  30 days; `cutoff(before:)`).
 - `PanelPlacement` — pure: `frame(for:size:screens:mouse:statusItem:)` →
   the panel's frame for a `PanelPosition` (center of the screen under the
   pointer; top-left at the pointer; below the menu bar icon, leading edges
@@ -222,7 +251,14 @@ gone. Unreferenced blobs are deleted after each delete and swept at launch
 (temporary files only once they are 10 minutes old, and never one whose
 date can't be read; a file a capture renamed away meanwhile isn't an
 error; nothing when references can't be read).
-`PRAGMA user_version` counts applied migrations (`HistorySchema`).
+Forgetting old clips (`forgetUnpinned`) deletes unreferenced blob files
+on a utility queue (`BlobStore.removeInBackground`): the hashes are marked
+first, and reserving one (every write a clip will reference reserves its
+hash) takes its mark off, so a file a capture or edit uses again before
+its turn is kept.
+`PRAGMA user_version` counts applied migrations (`HistorySchema`): 1
+created the tables, 2 added the nullable `clips.custom_title` (an
+`ALTER TABLE`, so existing histories migrate in place).
 
 ### Capture flow (app ↔ core)
 
@@ -326,7 +362,20 @@ error; nothing when references can't be read).
   except while the panel is hidden (`panelDidHide` also drops the query).
   Key presses go through `perform(_:)`, which leaves ⌘⌫ to the search
   field while there's a query and lets only ⌥⌘⌫ confirm the clear bar;
-  the context menu uses `perform(_:on:)`. Moving the selection asks
+  the context menu uses `perform(_:on:)`, its items from `ClipMenu`
+  (Rename… for every clip, Edit… for text-like ones). Renaming and editing
+  live here too (`editing: PanelEditing?`, `nameDraft`, `textDraft`):
+  ⌘R makes the row a `RenameField`; ⌘E reads the clip's plain text
+  (detached when over 64 KB; refused past 100,000 characters, and for
+  images and files with a footer note) and the preview becomes a
+  `TextEditPane` around `ClipTextEditor` (an `NSTextView` with
+  substitutions off). `keyMode` tells `PanelKeyRouter` how to read keys:
+  while editing it hands typing, text navigation and the editing shortcuts
+  to the field, maps ⏎ (renaming), ⌘S and ⌘⏎ to save and Esc to cancel,
+  and takes every other ⌘ shortcut as `.ignore`. Moving away (another row,
+  the query, the filter, the context menu, a double-click, hiding the
+  panel, the field losing the keyboard) saves; only Esc discards.
+  `searchFocusToken` gives the search field the keyboard back afterwards. Moving the selection asks
   `announce` (VoiceOver, via `PanelController`) to speak the row's
   `ClipAccessibility` label. The list never reads the selection itself:
   each row does, and a small `SelectionScroller` view scrolls, so an arrow
@@ -339,6 +388,10 @@ error; nothing when references can't be read).
   Pinned), so a pin's row is its place. Footer labels follow
   `PasteOptions`. Views only render it; caches (app icons, thumbnails)
   live in `PanelResources`.
+- **RetentionScheduler** — applies `Preferences.forgetAfter`: at launch,
+  whenever it changes (observation) and hourly on a timer with 10 minutes'
+  tolerance (none with "Never"), `HistoryStore.forgetUnpinned(olderThan:)`
+  with the period's cutoff.
 - **PreviewLoader** — the view model's previews. It reads only what a
   preview shows (`representations(for:types:)`: a text clip's text types,
   a file clip's URLs), sanitizes all of it with
@@ -347,7 +400,8 @@ error; nothing when references can't be read).
   in the database and at most 64 KB are previewed at once; bigger ones
   show `.loading` while `load(_:)` reads and prepares them off the main
   actor (`SharedLoads`), cancelled when the selection moves on. The last
-  16 previews are kept (`LRUCache`).
+  16 previews are kept (`LRUCache`), keyed by ID, content hash and copy,
+  so an edited clip is previewed afresh.
 - **ThumbnailCache** — reads only a clip's own image representation and
   decodes it off the main actor (`SharedLoads`: one decode per image and
   size, cancelled when no view waits for it), keeping decoded images by

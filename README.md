@@ -19,6 +19,8 @@ source.
   **⏎** to paste into that app, or **⌘1–⌘9** for the first nine clips.
 - **⌥⏎** pastes as plain text, **⌘⏎** only copies.
 - Pin the clips you reuse (**⌘P**). Pins stay on top and are never pruned.
+- Name a clip (**⌘R**) so it's easy to find, or fix its text (**⌘E**): pins
+  become snippets. Search finds clips by name too.
 - Each clip shows itself: a color its swatch, an image its thumbnail, a file
   its icon, a link its host, code in monospace. Search marks the words that
   matched.
@@ -50,6 +52,8 @@ In the panel (the search field always has the keyboard):
 | ⏎ · ⌥⏎ · ⌘⏎ | Paste · paste as plain text · copy only |
 | ⌘1–⌘9 · ⌥⌘1–⌥⌘9 | Paste clip 1–9 · as plain text |
 | ⌘P | Pin or unpin |
+| ⌘R | Rename the selected clip (⏎ saves, Esc cancels) |
+| ⌘E | Edit the selected clip's text (⌘S saves, Esc cancels) |
 | ⌥⌘↑ ⌥⌘↓ | Move a pin up or down (or drag it) |
 | ⌘⌫ | Delete the selected clip (with an empty search) |
 | ⌥⌘⌫, then ⌥⌘⌫ again | Clear every unpinned clip |
@@ -95,6 +99,9 @@ with each update: remove Kept from the list and add it again.
   capture from the menu bar menu (or a shortcut), choose "Ignore next copy"
   before copying something sensitive, skip copies from your other devices,
   and clear the history any time.
+- **Forgets on a schedule, if you like.** Settings › Privacy › "Forget
+  unpinned clips" deletes clips you haven't copied or pasted for a day, a
+  week or a month. Pinned clips always stay.
 - From macOS 15.4, macOS can ask before an app reads the clipboard. If it's
   set to ask or deny for Kept, Kept says so and where to allow it.
 

@@ -218,11 +218,45 @@ Notes (A4, UI/UX fixes and polish):
   restore, focus after Settings with and without another app, and `accessBehavior` on 15.4+
   (CI can't change it).
 
+## A5 — Rename, edit and forget
+- ☑ Core: schema 2 adds `custom_title` (schema 1 histories migrate in place); `Clip.customTitle` / `displayTitle`; search matches names too
+- ☑ Core: `HistoryStore.rename(_:to:)` (sanitized, ≤200 characters; blank or the generated title clears) and `editText(_:to:at:)` for text, rich text, links and colors (kind, title, metadata and hash worked out again; ID, pin, name, copies and dates kept; merges into an existing clip with the same content)
+- ☑ Core: retention — `Preferences.forgetAfter` (never / a day / a week / a month) and `HistoryStore.forgetUnpinned(olderThan:)`; pins exempt, blob files deleted on a background queue
+- ☑ ⌘R renames inline in the row (⏎ saves, Esc cancels, empty restores the text, clicking away saves); named rows show the name, then the content muted
+- ☑ ⌘E edits the text in the preview (⌘S / ⌘⏎ save, Esc cancels; mono for code, links and colors; rich text says it drops formatting); images and files point to ⌘R
+- ☑ Context menu: Rename… and Edit… (text only); VoiceOver reads names and announces saves
+- ☑ Settings › Privacy: "Forget unpinned clips", applied at launch, on change and hourly
+- ☑ Snapshots: named row, renaming, editing prose / code / rich text, the image refusal, Privacy with the popup
+
+Notes (A5):
+- While a name or text is edited, `PanelKeyRouter` reads keys in a `PanelKeyMode`: the field
+  gets typing, text navigation (⌘ with arrows, ⌫, ⌦) and the editing shortcuts; ⏎ (renaming),
+  ⌘S and ⌘⏎ save; Esc cancels the edit, never the panel; every other ⌘ shortcut is taken and
+  does nothing, so ⌘1–9 can't paste and ⌘P can't pin meanwhile.
+- Moving away saves, as in Finder: clicking another row, searching, changing the filter, the
+  context menu, double-clicking or closing the panel. Only Esc throws an edit away. An empty
+  text edit stays open with a notice when saved with ⌘S, and is dropped (with a notice) when
+  you move away.
+- The editor is an `NSTextView` (no smart quotes, dashes, replacements, autocorrection or link
+  detection; spelling checked for prose only). It shows the text as the preview does
+  (`TextSanitizer.multiline`), so invisible control characters a clip held are gone once it's
+  saved; saving the text unchanged writes nothing. Clips over 100,000 characters aren't
+  edited; text over 64 KB is read off the main actor first.
+- An edit remembers the old content as deleted at the edit (`wasDeleted`), so a copy of it seen
+  before the edit can't come back as its own clip; the clear generation doesn't move. A merge
+  keeps the edited clip's ID and takes the other's pin (when it had none), name (when it had
+  none), copies, earlier first copy and later last copy. Re-copying a named clip keeps its name.
+- Forgetting deletes rows on the main actor and blob files on a utility queue
+  (`BlobStore.removeInBackground`); a blob reserved again before its turn (a capture or an edit
+  with the same bytes) keeps its file. Forgotten content isn't remembered as deleted.
+- Needs a hand check on a Mac: the rename field takes the keyboard with its text selected, the
+  editor takes it on ⌘E, the search field gets it back after saving or cancelling, clicking
+  the search field while editing saves, and VoiceOver hears the name field and the saves.
+
 ## Later (P2, only if it stays lean)
 - Expose the panel's selected row to VoiceOver as the list's selected child (needs an AppKit
   list or a SwiftUI API for it)
 - A deep link to the Paste from Other Apps pane, once macOS documents one
-- Edit / rename clips (⌘E / ⌘R) — turns pins into snippets
 - OCR text in images for search
 - Paste stack / multi-paste
 - Ignore by regex; App Intents

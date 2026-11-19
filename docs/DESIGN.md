@@ -135,6 +135,53 @@ the screen's visible frame). Two panes under one search bar, a quiet footer.
   draw on the opaque window background because vibrancy doesn't render
   offscreen.
 
+**As built (A5): naming and editing clips.** Pins become snippets: a
+clip can carry a name, and text can be corrected in place.
+
+```
+│ 1  Support reply  Thanks for reaching out…     │   a named row: the name in ink,
+│ 2  ▧ [Studio address            ]   9d  ◉      │   the content muted after it
+│                                                │   ⌘R: a native rounded field
+├────────────────────────────────────────────────┤
+│ ⏎ Rename   esc Cancel    Leave it empty to show the clip's text. │
+```
+
+- **Rename (⌘R).** The selected row's title becomes a native rounded text
+  field after the clip's glyph (swatch, thumbnail, file icon), its text
+  lined up with the other rows' where there's no glyph. It holds the
+  current name or title, all selected, so typing replaces it; emptied, its
+  placeholder is the clip's own title, which is what an empty name brings
+  back. No highlighter while renaming: the field is the focus. ⏎ saves,
+  Esc cancels the rename (a second Esc closes the panel), clicking
+  anywhere else saves, as in Finder.
+- **Named rows** show the name in ink, then the content muted (a link's
+  address, a color's value, an image's size), after the same glyph; search
+  matches the name and the content. The preview is unchanged except for a
+  last, quiet fact, "Content", with the first line of what the clip holds.
+- **Edit (⌘E).** For text, rich text, links and colors the preview becomes
+  the editor: the same type (13 pt SF Pro for prose; 12 pt SF Mono for
+  code, links and colors), its text where the preview's was, on the wash
+  with a hairline edge and 6 pt corners, the facts hidden. Rich text adds
+  one 11 pt muted line under it: "Saving keeps the text and drops the
+  formatting." No smart quotes, dashes or autocorrection: code and URLs
+  stay as typed. ⌘S (or ⌘⏎) saves in place and keeps the clip selected;
+  ⏎ and Tab type; Esc cancels. Moving away (another row, the search, the
+  filter, closing the panel) saves.
+- **Images and files** can't be edited: ⌘E puts "Only text can be edited.
+  Press ⌘R to rename this image." in the footer instead of a beep.
+- **The footer** while renaming or editing is a bar like the clear
+  confirmation: "⏎ Rename" or "⌘S Save", then "esc Cancel" (both
+  clickable), and on the right a notice or, while renaming, "Leave it
+  empty to show the clip's text." The usual footer doesn't list ⌘R and
+  ⌘E, to stay short; the context menu and this file do.
+- While a name or text is edited, every other ⌘ shortcut is taken and
+  does nothing (no ⌘1–9 paste, no ⌘P pin), and the keyboard returns to
+  the search field afterwards. VoiceOver reads the name in row labels and
+  hears "Renamed to …" and "Edit saved."
+- Snapshots: `selected-named-*`, `rename-*`, `rename-image-*`,
+  `edit-text-*`, `edit-code-*`, `edit-rich-text-*`,
+  `edit-image-refused-*`.
+
 **As built (A2): the copy-only hint.** When Kept copies but can't paste
 (no permission yet, secure input, Kept itself in front), a small HUD
 appears just above the bottom edge of where the panel was (or near the
@@ -207,6 +254,8 @@ In the panel, as built:
 | ⏎ · ⌥⏎ · ⌘⏎ | Paste · the other format · copy only |
 | ⌘1–⌘9 · ⌥⌘1–⌥⌘9 | Paste row N · in the other format |
 | ⌘P | Pin / unpin |
+| ⌘R | Rename the selected clip (⏎ saves, Esc cancels; empty shows its text again) |
+| ⌘E | Edit the selected clip's text (⌘S or ⌘⏎ saves, Esc cancels; text, links, colors) |
 | ⌥⌘↑ ⌥⌘↓ | Move the selected pin up / down (also: drag a pin) |
 | ⌘⌫ | Delete the selected clip (empty search only) |
 | ⌥⌘⌫, then ⌥⌘⌫ again | Clear unpinned clips (inline confirm; esc cancels, ⏎ does nothing) |
@@ -214,10 +263,11 @@ In the panel, as built:
 | ⌃U · Esc | Clear the search · clear, then close |
 | ⌘, | Settings |
 
-The footer keeps to the keys that act on the selection; moving pins and
-⌘, live here and in the row's context menu instead, so it stays quiet.
-Right-clicking a row offers Paste, Paste as plain text, Copy, Pin / Unpin
-and Delete, with their keys, named as the footer names them.
+The footer keeps to the keys that act on the selection; moving pins,
+renaming, editing and ⌘, live here and in the row's context menu instead,
+so it stays quiet. Right-clicking a row offers Paste, Paste as plain text,
+Copy · Pin / Unpin, Rename…, Edit… (text, links and colors only) ·
+Delete, with their keys, named as the footer names them.
 
 ## Menu bar
 
@@ -328,14 +378,18 @@ pane used.
   table for the default password managers, else by bundle ID, which the
   row's tooltip always shows) with borderless
   + and − below it and "Restore defaults" on the right, as in System
-  Settings. History: "Clear history…" and a one-line summary ("13 clips in
-  your history, 2 of them pinned.").
+  Settings. History: "Forget unpinned clips:" with a menu (Never, After a
+  day, After a week, After a month) and a one-line note ("Unpinned clips
+  stay until your history is full." / "Counted from a clip's last copy or
+  paste. Pins always stay."), applied at once; then "Clear history…" and a
+  one-line summary ("13 clips in your history, 2 of them pinned.").
 - **About** — the 96 pt icon, the name, "Version 0.1.0 (128)", one line of
   what Kept is, the project link, the license, a small "Show welcome
   window" button; a quiet note only when the history skipped unreadable
   clips or couldn't open.
 - Snapshots: `settings-<pane>-light/dark.png` for each pane (General also
-  with the approval and permission notes showing) and
+  with the approval and permission notes showing, Privacy also with
+  "After a week", `settings-privacy-forget-week-*`) and
   `settings-window-light.png` with the title bar and toolbar.
 - Closing Settings gives the keyboard back to the last app the user was
   in (even one they switched to while Settings was open), or hides Kept
