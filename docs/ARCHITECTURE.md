@@ -104,7 +104,9 @@ Resources are **not** SwiftPM `resources:`; the bundle script copies them into
   `PasteboardItem` — one pasteboard item: its representations in order;
   `plainText` is its text for plain-text pastes and the preview (string,
   else URL, else the text of its RTF, else of its HTML, through the core
-  extractors), `plainText(of:)` joins items' texts.
+  extractors), `plainText(of:)` joins items' texts, and
+  `plainTextItems(of:)` is what a plain-text paste writes (each item's
+  text as a string-only item, worked out once; `nil` when none has text).
   Whether bytes live inline or in a blob file is the store's business.
   Internally it can carry the SHA-256 `ClipBuilder` computed off the main
   actor (cleared when `data` changes, not part of equality), which the store
@@ -129,8 +131,11 @@ Resources are **not** SwiftPM `resources:`; the bundle script copies them into
   writes one per file, so bigger file copies are skipped, not cut.
 - `AppActivationLog` — pure: which app was frontmost when (monotonic
   seconds), and `excludedApp(from:through:settings:)`, the first excluded
-  app frontmost at any moment of a window (the one in front at its start
-  and every one activated during it).
+  app frontmost at any moment of a window (inclusive: the one in front at
+  its start and every one activated during it).
+  `excludedApp(from:polledAt:settings:)` checks through
+  `lateNotificationAllowance` (0.25 s) after the poll, for the second
+  check once activations queued behind the poll are logged.
 - `ClipBuilder` — pure and `Sendable`: `build(from:) -> ClipDraft?`.
   Refuses any snapshot whose items or `declaredTypes` carry a concealed,
   transient or auto-generated marker (legacy ones too). Keeps only
@@ -148,22 +153,28 @@ Resources are **not** SwiftPM `resources:`; the bundle script copies them into
   for rows and search; public `multiline(_:maxUTF16Count:)` keeps spaces,
   tabs and line breaks (all as LF) for the preview, drops the same scalars,
   caps every character the same way and cuts on a character boundary by
-  UTF-16 length; `lineCount(of:)` counts lines on UTF-8 bytes.
+  UTF-16 length; `lineCount(of:)` counts lines on UTF-8 bytes, as many as
+  `multiline` shows (a CR and an LF with a dropped character between them
+  are two breaks in both).
 - `HistoryStore` — `@MainActor`, `@Observable`, `init(directory:limits:)`.
   Exposes `pinned` (pin order) and `recent` (unpinned, newest first) and
   mutations: `record(_:at:)` (dedup bumps to top; a `ClipDraft`, or a
   `StagedClip` whose blob files are already written), `discard(_:)` (a
   staged clip that won't be recorded), `markUsed(_:at:)`, `pin`,
   `unpin(_:at:)` (back to the top of the history), `movePin(_:toIndex:)`,
-  `delete`, `clearUnpinned`, `clearAll` (both bump `clearGeneration`),
-  `setHistoryLimit`. Reading: `representations(for:)` (every type) and
+  `delete(_:at:)` (remembers when each of the last 64 deleted contents
+  went, for `wasDeleted(_:after:)`), `clearUnpinned`, `clearAll` (both
+  bump `clearGeneration`), `setHistoryLimit`. Reading: `representations(for:)` (every type) and
   `representations(for:types:)` (only those, so a text clip's text never
   loads the picture next to it), or `storedRepresentations(for:types:)`,
   which only queries the database and returns a `Sendable`
   `StoredRepresentations` whose `load()` reads blob files anywhere, off
   the main actor for big clips (`first(ofAny:)` narrows it to one
   representation). `stager` (`ClipStager`, `Sendable`) writes a draft's
-  blob files off the main actor. Prunes unpinned clips past the limit
+  blob files off the main actor: `stageInBackground(_:)` on its own
+  serial `DispatchQueue`, so fsyncs never hold a cooperative-pool thread.
+  A staging that fails partway throws `ClipStager.Failure`, whose
+  `written` goes to `discard(_:)` so no file waits for the next launch. Prunes unpinned clips past the limit
   automatically (pins never); every error is a thrown `HistoryStoreError`.
   Opening throws only when the history is unusable: unreadable rows are
   skipped and left alone (`skippedRecordCount`), and failed renumbering,
@@ -171,8 +182,8 @@ Resources are **not** SwiftPM `resources:`; the bundle script copies them into
 - `LRUCache` — a value type keeping the most recently used values within
   a count and a total cost (bytes). `SharedLoads` — `@MainActor`: one
   detached load per key at a time, shared by every caller asking for it;
-  a cancelled caller gets `nil`, and a load nobody waits for any more is
-  cancelled. The panel's previews and thumbnails use both.
+  each caller waits on its own continuation, so a cancelled one gets `nil`
+  at once, and a load nobody waits for any more is cancelled. The panel's previews and thumbnails use both.
 - `ClipSearch` — pure: `results(for:filter:pinned:recent:) → [Clip]`.
   Case/diacritic-insensitive; every token must match; word-start >
   substring > subsequence (tokens of ≥3 typed characters, whole scalars,
@@ -205,29 +216,38 @@ the main actor (`ClipStager.stage`) and reserves their hashes first
 (`BlobReservations`, a lock shared by every deletion), so a clear, delete
 or sweep running meanwhile never removes a blob a clip is about to
 reference; `record` releases the reservation (and `discard` deletes the
-files a dropped clip leaves unreferenced). `record` writes a staged blob
-again only if its file has gone. Unreferenced blobs are deleted after
-each delete and swept at launch (temporary files only once they are 10
-minutes old; nothing when references can't be read).
+files a dropped clip, or a staging that failed partway, leaves
+unreferenced). `record` writes a staged blob again only if its file has
+gone. Unreferenced blobs are deleted after each delete and swept at launch
+(temporary files only once they are 10 minutes old, and never one whose
+date can't be read; a file a capture renamed away meanwhile isn't an
+error; nothing when references can't be read).
 `PRAGMA user_version` counts applied migrations (`HistorySchema`).
 
 ### Capture flow (app ↔ core)
 
 1. On a `changeCount` change, skip it if `AppActivationLog` says an
-   excluded app was frontmost at any moment since the previous poll; then
-   read `types` and resolve the source app.
+   excluded app was frontmost at any moment from the previous poll
+   through this one (the app in front at the previous poll counts too);
+   then read `types` and resolve the source app.
 2. `CapturePolicy(settings: preferences.captureSettings).decision(types:sourceBundleID:)`.
 3. On `.record`, skip copies of more than `CapturePolicy.maxItems` items,
    then read only `typesToRead(offered:)` of each item into a
    `PasteboardSnapshot`, passing every type as `declaredTypes`. All
    `NSPasteboard` calls stay on the main actor.
-4. Off the main actor, in one detached task: resolve Finder's file
-   reference URLs (`file:///.file/id=…`) to path URLs and re-encode
-   TIFF-only images as PNG, `ClipBuilder(settings:imageInspector:).build(from:)`,
-   then `HistoryStore.stager.stage(_:)` (blob files written and fsync'd).
-5. Back on the main actor, `HistoryStore.record(_ staged:at:)` writes the
-   rows, unless the history was cleared (`clearGeneration`) or the
-   settings now refuse the clip, in which case `discard(_:)`.
+4. Off the main actor, in a detached task (at most two at once; a copy
+   read while both are busy waits, and a newer one replaces it): resolve
+   Finder's file reference URLs (`file:///.file/id=…`) to path URLs and
+   re-encode TIFF-only images as PNG,
+   `ClipBuilder(settings:imageInspector:).build(from:)`, then
+   `HistoryStore.stager.stageInBackground(_:)` (blob files written and
+   fsync'd on the stager's serial queue).
+5. Back on the main actor, no sooner than 0.25 s after the poll,
+   `HistoryStore.record(_ staged:at:)` writes the rows, unless the history
+   was cleared (`clearGeneration`), the clip was deleted after its copy
+   was seen (`wasDeleted(_:after:)`), the excluded-app check now finds an
+   app (`excludedApp(from:polledAt:settings:)`) or the settings now refuse
+   the clip, in which case `discard(_:)`.
 
 ## App layer
 
@@ -246,6 +266,13 @@ minutes old; nothing when references can't be read).
   poll: a password manager's quick-access window that copies without a
   marker and hands focus straight back is caught, not attributed to the
   app it returned to. The source marker still names the source when present.
+  Activations are timed when their notification is handled on the main
+  thread, which may be just after a poll that was queued with it, hence
+  the second check. The window is privacy-first: it's inclusive and counts
+  the app in front at the previous poll, so a copy made within about half
+  a second of leaving an excluded app (⌘-Tab out of 1Password, then ⌘C in
+  Safari) is skipped too, as is one followed within 0.25 s of the poll by
+  an excluded app coming to the front. Settings › Privacy says so.
 - **PasteboardReader** — notes `changeCount`, asks `CapturePolicy` on the
   types and the frontmost app, reads `org.nspasteboard.source` and asks
   again, skips copies of more than 1,000 items, then reads only
@@ -259,19 +286,26 @@ minutes old; nothing when references can't be read).
   everything after it doesn't. AppKit offers no way to learn a type's
   size before reading it.
 - **CaptureService** — first checks the activation window, then runs the
-  reader, then one detached task per copy: `PasteboardReader.normalized`
+  reader, then a detached task per copy: `PasteboardReader.normalized`
   (Finder file reference URLs resolved, TIFF-only images re-encoded to
   PNG), `ClipBuilder` (`ImageIOInspector` for sizes) and
-  `HistoryStore.stager` (blob files written and fsync'd). Builds run side
-  by side, so a slow one never holds up later copies; each is recorded on
-  the main actor with the time its copy was seen, unless the same content
-  was recorded more recently, the history was cleared since
-  (`clearGeneration`), or pause, exclusions or kind toggles now refuse it
-  (then its blob files are discarded).
-- **PasteboardWriter** — writes a clip's items back as `NSPasteboardItem`s
-  (all representations, or each item's `PasteboardItem.plainText`, so an
-  HTML-only clip pastes as text) with `.keptOwn`, `.source` and any
-  privacy markers passed in.
+  `HistoryStore.stager.stageInBackground` (blob files written and fsync'd
+  on the stager's serial queue). At most `maxBuildsInFlight` (2) builds
+  run side by side, so a slow one doesn't hold up the next copy and a
+  burst can't pile up snapshots; a copy read while both are busy waits,
+  and a newer copy replaces it (the newest is always recorded). Each is
+  recorded on the main actor with the time its copy was seen, no sooner
+  than 0.25 s after its poll, unless the same content was recorded more
+  recently, the history was cleared since (`clearGeneration`), the clip
+  was deleted since (`wasDeleted`), the activation window checked again
+  now holds an excluded app, or pause, exclusions or kind toggles now
+  refuse it (then its blob files are discarded, as are those of a staging
+  that failed partway).
+- **PasteboardWriter** — writes items back as `NSPasteboardItem`s with
+  `.keptOwn`, `.source` and any privacy markers passed in. `PasteService`
+  hands it all of a clip's representations, or
+  `PasteboardItem.plainTextItems(of:)` of its text types, so an HTML-only
+  clip pastes as text.
 - **PanelController** — owns `FloatingPanel` (non-activating `NSPanel`,
   `.statusBar` level, `canBecomeKey = true`), places it with
   `PanelPlacement` (the setting for the shortcut, `.statusItem` for a click
@@ -407,8 +441,12 @@ minutes old; nothing when references can't be read).
    first time and "Press ⌘V" after; secure input → copy + "Press ⌘V";
    otherwise paste.
 3. It writes the clip (`PasteboardWriter`; for plain text only its text
-   types are read), tells the monitor the change count (so the write is
-   never captured) and marks the clip used. If the write fails the panel
+   types are read, and each item's text worked out once), tells the
+   monitor the change count (so the write is never captured) and marks
+   the clip used. When a clip's text types add up to more than 64 KB, the
+   panel first awaits `startLoading(_:for:)`, which reads them and works
+   out the text in a detached task; another paste meanwhile does nothing,
+   and hiding the panel drops this one. If the write fails the panel
    stays open with a notice; if only marking it used fails, that's logged
    and the paste goes ahead.
 4. The panel hides; then `complete` requests access

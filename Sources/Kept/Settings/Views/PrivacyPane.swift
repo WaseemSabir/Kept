@@ -37,7 +37,9 @@ struct PrivacyPane: View {
 
             SettingsRow(label: "Excluded apps:", labelWidth: Self.labelWidth) {
                 ExcludedAppsList(model: model)
-                SettingsNote(text: "Kept never saves what you copy in these apps. Password managers are on the list from the start.")
+                SettingsNote(
+                    text: "Kept never saves what you copy in these apps. It also skips copies made within a moment of using them. Password managers are on the list from the start."
+                )
             }
 
             SettingsRow(label: "History:", labelWidth: Self.labelWidth) {

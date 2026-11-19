@@ -174,6 +174,14 @@ Notes (review fixes: robustness, privacy, performance):
 - Plain text (⌥⏎, the global shortcut, the preview) comes from `PasteboardItem.plainText`:
   string, URL, RTF, then HTML, so HTML-only clips work. A failed "mark used" no longer
   stops a paste. "Ignore next copy" is a toggle.
+- Capture follow-ups: at most two builds at once (a waiting copy is replaced by a newer
+  one), blob writes on the stager's serial queue, the excluded-app window checked again
+  0.25 s after the poll (activations queued behind a busy main thread), deleted clips
+  stay deleted when a re-copy was building, a staging that fails partway deletes what it
+  wrote, and a clear during a capture no longer reports a false error. Big plain-text
+  pastes work out their text once, off the main thread; a cancelled preview load lets
+  its caller go at once; preview line counts match the lines shown. Settings › Privacy
+  says copies made within a moment of using an excluded app are skipped too.
 
 ## M9 — Onboarding, accessibility, release
 - ☑ First-launch welcome window (where Kept is, the recorded shortcut, the paste permission, open at login; again from About)
