@@ -31,6 +31,11 @@ public final class HistoryStore {
     /// can drop a clip whose copy was seen before the history was cleared
     /// but whose build finished after.
     @ObservationIgnored public private(set) var clearGeneration = 0
+    /// When content was last deleted with `delete(_:at:)`, by content hash,
+    /// for `wasDeleted(_:after:)`. At most `maxRecentDeletions`; the
+    /// oldest go first.
+    @ObservationIgnored private var recentDeletions: [String: Date] = [:]
+    static let maxRecentDeletions = 64
 
     /// Writes large payloads to blob files off the main actor before
     /// `record(_:at:)` (see `ClipStager`).
@@ -323,10 +328,30 @@ public final class HistoryStore {
 
     // MARK: Removing
 
-    public func delete(_ id: UUID) throws(HistoryStoreError) {
+    /// Deletes a clip, and remembers for a while that its content was
+    /// deleted at `date` (see `wasDeleted(_:after:)`).
+    public func delete(_ id: UUID, at date: Date = Date()) throws(HistoryStoreError) {
         try mapErrors {
-            guard clip(withID: id) != nil else { throw HistoryStoreError.clipNotFound(id) }
+            guard let clip = clip(withID: id) else { throw HistoryStoreError.clipNotFound(id) }
             try deleteClips([id])
+            noteDeletion(of: clip.contentHash, at: date)
+        }
+    }
+
+    /// Whether a clip with `contentHash` was deleted (`delete(_:at:)`) after
+    /// `date`. Capture asks before recording a copy seen at `date` whose
+    /// build finished later, so a deleted clip isn't brought straight back
+    /// by a copy made before the user deleted it.
+    public func wasDeleted(_ contentHash: String, after date: Date) -> Bool {
+        guard let deletedAt = recentDeletions[contentHash] else { return false }
+        return deletedAt > date
+    }
+
+    private func noteDeletion(of contentHash: String, at date: Date) {
+        recentDeletions[contentHash] = max(date, recentDeletions[contentHash] ?? date)
+        while recentDeletions.count > Self.maxRecentDeletions,
+              let oldest = recentDeletions.min(by: { $0.value < $1.value })?.key {
+            recentDeletions[oldest] = nil
         }
     }
 

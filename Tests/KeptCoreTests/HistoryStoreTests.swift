@@ -169,6 +169,29 @@ struct HistoryStoreTests {
         #expect(throws: HistoryStoreError.clipNotFound(a.id)) { try store.representations(for: a.id) }
     }
 
+    @Test("Remembers deleted content for a while, so a late capture can't bring it back")
+    func remembersDeletions() throws {
+        defer { removeTemporaryDirectory(directory) }
+        let store = try makeStore()
+        let clip = try store.record(textDraft("deleted"), at: .at(1))
+        let kept = try store.record(textDraft("kept"), at: .at(2))
+        #expect(!store.wasDeleted(clip.contentHash, after: .at(0)))
+
+        try store.delete(clip.id, at: .at(10))
+        #expect(store.wasDeleted(clip.contentHash, after: .at(5)), "copied before the delete")
+        #expect(!store.wasDeleted(clip.contentHash, after: .at(10)))
+        #expect(!store.wasDeleted(clip.contentHash, after: .at(11)), "copied again after the delete")
+        #expect(!store.wasDeleted(kept.contentHash, after: .at(5)))
+
+        // Bounded: the oldest deletions are forgotten first.
+        for index in 0..<HistoryStore.maxRecentDeletions {
+            let other = try store.record(textDraft("other \(index)"), at: .at(20))
+            try store.delete(other.id, at: .at(Double(30 + index)))
+        }
+        #expect(!store.wasDeleted(clip.contentHash, after: .at(5)))
+        #expect(store.wasDeleted(textDraft("other 1").contentHash, after: .at(20)))
+    }
+
     @Test("Clears unpinned clips and keeps pins")
     func clearsUnpinned() throws {
         defer { removeTemporaryDirectory(directory) }
