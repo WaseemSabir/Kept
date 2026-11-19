@@ -9,17 +9,17 @@ import Foundation
 /// actor this way. If the clip is deleted in the meantime, `load()` throws
 /// `.missingBlob`.
 public struct StoredRepresentations: Sendable {
-    public struct Entry: Sendable, Hashable {
-        public let itemIndex: Int
-        public let type: PasteboardType
+    struct Entry: Sendable, Hashable {
+        let itemIndex: Int
+        let type: PasteboardType
         /// The payload's length in bytes.
-        public let size: Int
+        let size: Int
         let inlineData: Data?
         let blobHash: String?
     }
 
     /// In item order, and within an item in the order captured.
-    public let entries: [Entry]
+    let entries: [Entry]
     let blobs: BlobStore
 
     public var isEmpty: Bool { entries.isEmpty }

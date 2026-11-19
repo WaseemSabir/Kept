@@ -1,7 +1,7 @@
 import AppKit
 import Testing
 @testable import Kept
-import KeptCore
+@testable import KeptCore
 
 @MainActor
 @Suite("Paste service")
