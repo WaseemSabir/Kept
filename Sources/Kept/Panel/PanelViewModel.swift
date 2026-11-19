@@ -71,6 +71,9 @@ final class PanelViewModel {
     /// The panel is off screen: history changes wait until it opens again,
     /// so a new copy never runs a search nobody sees.
     @ObservationIgnored private var isHidden = false
+    /// A paste waiting for a big clip to be read off the main actor
+    /// (`ClipPasting.startLoading(_:for:)`).
+    @ObservationIgnored private var pendingPaste: Task<Void, Never>?
 
     private let paster: (any ClipPasting)?
     private let pasteOptions: @MainActor () -> PasteOptions
@@ -370,6 +373,8 @@ final class PanelViewModel {
     /// history isn't searched again until it opens.
     func panelDidHide() {
         isHidden = true
+        pendingPaste?.cancel()
+        pendingPaste = nil
         isConfirmingClear = false
         notice = nil
         query = ""
@@ -448,13 +453,34 @@ final class PanelViewModel {
 
     /// Writes `clip`, closes the panel, then pastes (or shows a hint where
     /// the panel was). If the clip can't be written the panel stays open and
-    /// says so.
+    /// says so. A big clip is read off the main actor first; meanwhile
+    /// another paste does nothing, and hiding the panel drops this one.
     private func paste(_ clip: Clip?, _ request: PasteRequest) {
         guard let clip else { return }
         guard let paster else {
             notice = "Kept can't paste while its history is unavailable."
             return
         }
+        guard pendingPaste == nil else { return }
+        guard let loading = paster.startLoading(clip, for: request) else {
+            write(clip, request)
+            return
+        }
+        pendingPaste = Task { [weak self] in
+            await withTaskCancellationHandler {
+                await loading.value
+            } onCancel: {
+                loading.cancel()
+            }
+            guard let self, !Task.isCancelled else { return }
+            self.pendingPaste = nil
+            self.write(clip, request)
+        }
+    }
+
+    /// The second half of `paste(_:_:)`, once anything slow has been read.
+    private func write(_ clip: Clip, _ request: PasteRequest) {
+        guard let paster else { return }
         let plan: PastePlan
         do {
             plan = try paster.prepare(clip, for: request)

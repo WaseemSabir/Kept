@@ -255,6 +255,32 @@ struct PasteServiceTests {
         #expect(harness.pasteboard.data(forType: .png) == nil)
     }
 
+    @Test("A big clip pasted as plain text is read and turned into text off the main actor first")
+    func bigPlainTextLoadsFirst() async throws {
+        let harness = try Harness(texts: ["small"])
+        defer { harness.tearDown() }
+        let html = "<p>" + String(repeating: "Hello <b>world</b> ", count: 10_000) + "</p>"
+        let item = PasteboardItem([ClipRepresentation(.html, string: html)])
+        let clip = try harness.store.record(try #require(ClipBuilder().build(from: PasteboardSnapshot(items: [item]))))
+        let expected = try #require(item.plainText)
+
+        #expect(harness.service.startLoading(try harness.clip("small"), for: .paste(alternate: true)) == nil)
+        #expect(harness.service.startLoading(clip, for: .paste(alternate: false)) == nil, "written whole")
+        let loading = try #require(harness.service.startLoading(clip, for: .paste(alternate: true)))
+        await loading.value
+
+        // With the HTML's file gone, the paste can only use what was read.
+        let blobs = harness.directory.appendingPathComponent("blobs")
+        for name in try FileManager.default.contentsOfDirectory(atPath: blobs.path) {
+            try FileManager.default.removeItem(at: blobs.appendingPathComponent(name))
+        }
+        let plan = try harness.paste(clip, .paste(alternate: true))
+        #expect(plan.plainText)
+        #expect(harness.pasteboard.string(forType: .string) == expected)
+        // It's used once.
+        #expect(throws: (any Error).self) { try harness.paste(clip, .paste(alternate: true)) }
+    }
+
     @Test("The plain-text shortcut leaves a clipboard without text alone")
     func clipboardWithoutText() throws {
         let harness = try Harness()

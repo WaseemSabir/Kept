@@ -52,28 +52,26 @@ struct PasteboardWriterTests {
             ClipRepresentation(.rtf, string: Self.rtf),
             ClipRepresentation(.string, string: "Hello, world"),
         ])]
-        #expect(PasteboardWriter.payload(of: rich, plainTextOnly: true) == [
+        #expect(PasteboardItem.plainTextItems(of: rich) == [
             PasteboardItem([ClipRepresentation(.string, string: "Hello, world")]),
         ])
-        #expect(PasteboardWriter.payload(of: rich, plainTextOnly: false) == rich)
 
         let rtfOnly = [PasteboardItem([ClipRepresentation(.rtf, string: Self.rtf)])]
-        #expect(PasteboardWriter.payload(of: rtfOnly, plainTextOnly: true) == [
+        #expect(PasteboardItem.plainTextItems(of: rtfOnly) == [
             PasteboardItem([ClipRepresentation(.string, string: "Hello, world")]),
         ])
 
-        // Nothing textual: written whole.
+        // Nothing textual: the paste service writes it whole.
         let image = [PasteboardItem([ClipRepresentation(.png, Data([0x89, 0x50]))])]
-        #expect(PasteboardWriter.payload(of: image, plainTextOnly: true) == image)
+        #expect(PasteboardItem.plainTextItems(of: image) == nil)
     }
 
     @Test("A clip copied as HTML alone pastes as its text")
     func htmlOnlyPayload() {
         let html = [PasteboardItem([ClipRepresentation(.html, string: "<p>Hello <b>world</b></p>")])]
-        #expect(PasteboardWriter.payload(of: html, plainTextOnly: true) == [
+        #expect(PasteboardItem.plainTextItems(of: html) == [
             PasteboardItem([ClipRepresentation(.string, string: "Hello world")]),
         ])
-        #expect(PasteboardWriter.payload(of: html, plainTextOnly: false) == html)
     }
 
     @Test("The plain-text shortcut reads a clipboard holding only HTML")

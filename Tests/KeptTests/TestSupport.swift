@@ -64,6 +64,13 @@ final class RecordingPaster: ClipPasting {
     var plan = PastePlan.paste(plainText: false)
     /// Shared with the panel's `onDismiss`, to check what happens first.
     var log: EventLog?
+    /// What `startLoading` returns: a read the panel waits for before
+    /// `prepare`, as for a big clip.
+    var loading: Task<Void, Never>?
+
+    func startLoading(_ clip: Clip, for request: PasteRequest) -> Task<Void, Never>? {
+        loading
+    }
 
     func prepare(_ clip: Clip, for request: PasteRequest) throws -> PastePlan {
         if let failure { throw failure }

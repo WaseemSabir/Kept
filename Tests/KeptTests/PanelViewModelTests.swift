@@ -227,6 +227,48 @@ struct PanelViewModelTests {
         #expect(model.notice == nil)
     }
 
+    @Test("A big clip is pasted once it's read; a second ⏎ meanwhile does nothing, and hiding the panel drops the paste")
+    func waitsForSlowReads() async throws {
+        defer { removeTemporaryDirectory(directory) }
+        let paster = RecordingPaster()
+        let (model, _) = try makeModel(["one", "two"], paster: paster)
+        var dismissed = 0
+        model.onDismiss = { dismissed += 1 }
+
+        let (read, finishRead) = AsyncStream<Void>.makeStream()
+        paster.loading = Task { for await _ in read {} }
+        model.perform(.activate(alternate: true))
+        model.perform(.activate(alternate: false))
+        #expect(paster.pastes.isEmpty)
+        finishRead.finish()
+        var tries = 0
+        while paster.pastes.isEmpty, tries < 1_000 {
+            tries += 1
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(paster.pastes == [RecordingPaster.Paste(title: "one", request: .paste(alternate: true))])
+        #expect(paster.completed.count == 1)
+        #expect(dismissed == 1)
+
+        let (never, neverFinished) = AsyncStream<Void>.makeStream()
+        defer { neverFinished.finish() }
+        let abandoned = Task { for await _ in never {} }
+        paster.loading = abandoned
+        model.prepareForShow()
+        model.perform(.activate(alternate: true))
+        model.panelDidHide()
+        await abandoned.value  // cancelled with the paste
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(paster.pastes.count == 1)
+        #expect(dismissed == 1)
+
+        // The next paste isn't held up by the dropped one.
+        paster.loading = nil
+        model.prepareForShow()
+        model.perform(.activate(alternate: false))
+        #expect(paster.pastes.count == 2)
+    }
+
     @Test("Without a paster the panel stays open and says why")
     func noPaster() throws {
         defer { removeTemporaryDirectory(directory) }

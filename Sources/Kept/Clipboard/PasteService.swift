@@ -6,9 +6,15 @@ import KeptCore
 /// `prepare` asks `PastePolicy` how (the format, paste or copy only) and
 /// writes the clip, telling the monitor the change count so the write is
 /// never captured as a new copy. Once the panel is hidden, `complete` posts
-/// ⌘V, or asks for the PostEvent permission and shows a hint.
+/// ⌘V, or asks for the PostEvent permission and shows a hint. A big clip
+/// pasted as plain text is read, and its text worked out, off the main
+/// actor first (`startLoading`).
 @MainActor
 final class PasteService: ClipPasting {
+    /// Clips whose text adds up to more than this many bytes are read and
+    /// turned into plain text off the main actor (as previews are).
+    static let immediateByteLimit = 64 * 1024
+
     enum Failure: Error, CustomStringConvertible {
         /// The pasteboard refused the write.
         case pasteboardRejected
@@ -29,6 +35,18 @@ final class PasteService: ClipPasting {
     private let focus: any KeyboardFocusChecking
     private let onboarding: PasteOnboarding
     private let hints: any PasteHintPresenting
+
+    /// A big clip's plain text, worked out off the main actor for the paste
+    /// waiting on it.
+    private struct LoadedText {
+        let clipID: UUID
+        let contentHash: String
+        /// The items to write (`nil`: the clip has no text), or why the
+        /// clip couldn't be read.
+        let items: Result<[PasteboardItem]?, HistoryStoreError>
+    }
+
+    private var loadedText: LoadedText?
 
     init(
         store: HistoryStore,
@@ -54,13 +72,33 @@ final class PasteService: ClipPasting {
 
     // MARK: ClipPasting
 
+    /// For a plain-text paste of a clip whose text types are big, reads them
+    /// and works out their text in a detached task, for `prepare` to write.
+    func startLoading(_ clip: Clip, for request: PasteRequest) -> Task<Void, Never>? {
+        guard PastePolicy.writesPlainText(request, options: options()),
+              let stored = try? store.storedRepresentations(for: clip.id, types: Set(PasteboardItem.textTypes)),
+              stored.byteSize > Self.immediateByteLimit
+        else { return nil }
+        loadedText = nil
+        let clipID = clip.id
+        let contentHash = clip.contentHash
+        return Task { [weak self] in
+            let items = await Task.detached(priority: .userInitiated) { () -> Result<[PasteboardItem]?, HistoryStoreError> in
+                do throws(HistoryStoreError) {
+                    return .success(PasteboardItem.plainTextItems(of: try stored.load()))
+                } catch {
+                    return .failure(error)
+                }
+            }.value
+            guard !Task.isCancelled else { return }
+            self?.loadedText = LoadedText(clipID: clipID, contentHash: contentHash, items: items)
+        }
+    }
+
     func prepare(_ clip: Clip, for request: PasteRequest) throws -> PastePlan {
         let plan = plan(for: request)
         let items = try itemsToWrite(for: clip, plainTextOnly: plan.plainText)
-        try write(
-            PasteboardWriter.payload(of: items, plainTextOnly: plan.plainText),
-            sourceBundleID: clip.sourceBundleID
-        )
+        try write(items, sourceBundleID: clip.sourceBundleID)
         do {
             try store.markUsed(clip.id)
         } catch {
@@ -71,15 +109,33 @@ final class PasteService: ClipPasting {
         return plan
     }
 
-    /// The clip's items to write. For plain text only its text types are
-    /// read, so the picture an app put next to its text isn't loaded; a
-    /// clip without text (an image) is read whole, as it's written whole.
+    /// The items to write: every representation, or only each item's plain
+    /// text (`PasteboardItem.plainTextItems(of:)`), so a clip copied as HTML
+    /// alone still pastes as text. For plain text only the clip's text types
+    /// are read, so the picture an app put next to its text isn't loaded,
+    /// and each item's text is worked out once, or taken from
+    /// `startLoading`. A clip without text (an image) is written whole.
     private func itemsToWrite(for clip: Clip, plainTextOnly: Bool) throws -> [PasteboardItem] {
+        let loaded = takeLoadedText(for: clip)
         if plainTextOnly {
-            let texts = try store.representations(for: clip.id, types: Set(PasteboardItem.textTypes))
-            if PasteboardItem.plainText(of: texts) != nil { return texts }
+            let texts: [PasteboardItem]?
+            if let loaded {
+                texts = try loaded.get()
+            } else {
+                let stored = try store.representations(for: clip.id, types: Set(PasteboardItem.textTypes))
+                texts = PasteboardItem.plainTextItems(of: stored)
+            }
+            if let texts { return texts }
         }
         return try store.representations(for: clip.id)
+    }
+
+    /// What `startLoading` worked out for `clip`, if anything; it's used once.
+    private func takeLoadedText(for clip: Clip) -> Result<[PasteboardItem]?, HistoryStoreError>? {
+        guard let loaded = loadedText else { return nil }
+        loadedText = nil
+        guard loaded.clipID == clip.id, loaded.contentHash == clip.contentHash else { return nil }
+        return loaded.items
     }
 
     func complete(_ plan: PastePlan, anchor: CGRect?) {
