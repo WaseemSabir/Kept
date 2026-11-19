@@ -102,6 +102,29 @@ struct SharedLoadsTests {
         #expect(await staying.value == 3)
     }
 
+    @Test("A cancelled caller is let go at once, while the load goes on for the others", .timeLimit(.minutes(1)))
+    func cancelledCallerLeavesAtOnce() async {
+        let loads = SharedLoads<String, Int>()
+        let latch = Latch()
+        let work: @Sendable () async -> Int? = {
+            await latch.wait() ? 5 : nil
+        }
+        let leaving = Task { @MainActor in await loads.value(for: "a", work: work) }
+        while !loads.isLoading("a") { await pause() }
+        let staying = Task { @MainActor in await loads.value(for: "a", work: work) }
+        while loads.waitingCount(for: "a") < 2 { await pause() }
+
+        leaving.cancel()
+        // Returns while the shared load is still held back.
+        #expect(await leaving.value == nil)
+        #expect(loads.isLoading("a"))
+        #expect(loads.waitingCount(for: "a") == 1)
+
+        await latch.open()
+        #expect(await staying.value == 5)
+        #expect(loads.count == 0)
+    }
+
     @Test("A caller that's already cancelled starts nothing")
     func alreadyCancelled() async {
         let loads = SharedLoads<String, Int>()
