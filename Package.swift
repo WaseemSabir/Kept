@@ -31,13 +31,19 @@ package.products.append(.executable(name: "Kept", targets: ["Kept"]))
 package.dependencies.append(
     .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "3.1.0")
 )
-package.targets.append(
+package.targets.append(contentsOf: [
     .executableTarget(
         name: "Kept",
         dependencies: [
             "KeptCore",
             .product(name: "KeyboardShortcuts", package: "KeyboardShortcuts"),
         ]
-    )
-)
+    ),
+    // App-layer logic that needs AppKit (key routing, the panel model,
+    // pasteboard I/O); `@testable import Kept`.
+    .testTarget(
+        name: "KeptTests",
+        dependencies: ["Kept", "KeptCore"]
+    ),
+])
 #endif

@@ -1,0 +1,70 @@
+import AppKit
+import Testing
+@testable import Kept
+
+@MainActor
+@Suite("Pasteboard monitor")
+struct PasteboardMonitorTests {
+    @Test("Reports each new copy once")
+    func reportsChanges() {
+        let pasteboard = makePasteboard()
+        defer { pasteboard.releaseGlobally() }
+        let monitor = PasteboardMonitor(pasteboard: pasteboard, isPaused: { false })
+        var reported: [Int] = []
+        monitor.onChange = { reported.append($0) }
+
+        #expect(monitor.poll() == .unchanged)
+        let first = pasteboard.simulateCopy("one")
+        #expect(monitor.poll() == .changed(changeCount: first))
+        #expect(monitor.poll() == .unchanged)
+        let second = pasteboard.simulateCopy("two")
+        #expect(monitor.poll() == .changed(changeCount: second))
+        #expect(reported == [first, second])
+    }
+
+    @Test("Skips what was on the pasteboard before it started")
+    func ignoresExistingContents() {
+        let pasteboard = makePasteboard()
+        defer { pasteboard.releaseGlobally() }
+        pasteboard.simulateCopy("from before")
+        let monitor = PasteboardMonitor(pasteboard: pasteboard, isPaused: { false })
+        #expect(monitor.poll() == .unchanged)
+    }
+
+    @Test("Skips Kept's own writes by change count")
+    func skipsOwnWrites() {
+        let pasteboard = makePasteboard()
+        defer { pasteboard.releaseGlobally() }
+        let monitor = PasteboardMonitor(pasteboard: pasteboard, isPaused: { false })
+        var reported = 0
+        monitor.onChange = { _ in reported += 1 }
+
+        monitor.noteOwnWrite(changeCount: pasteboard.simulateCopy("mine"))
+        #expect(monitor.poll() == .ownWrite)
+        // An own write that another copy replaced before the poll is forgotten.
+        monitor.noteOwnWrite(changeCount: pasteboard.simulateCopy("mine again"))
+        let theirs = pasteboard.simulateCopy("theirs")
+        #expect(monitor.poll() == .changed(changeCount: theirs))
+        #expect(reported == 1)
+    }
+
+    @Test("Pausing and ignoring the next copy skip changes")
+    func pauseAndIgnoreNext() {
+        let pasteboard = makePasteboard()
+        defer { pasteboard.releaseGlobally() }
+        var isPaused = true
+        let monitor = PasteboardMonitor(pasteboard: pasteboard, isPaused: { isPaused })
+
+        pasteboard.simulateCopy("while paused")
+        #expect(monitor.poll() == .paused)
+
+        isPaused = false
+        monitor.ignoreNextCopy()
+        #expect(monitor.isIgnoringNextCopy)
+        pasteboard.simulateCopy("a password typed by hand")
+        #expect(monitor.poll() == .ignoredOnce)
+        #expect(!monitor.isIgnoringNextCopy)
+        let next = pasteboard.simulateCopy("next")
+        #expect(monitor.poll() == .changed(changeCount: next))
+    }
+}
