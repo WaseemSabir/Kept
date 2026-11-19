@@ -29,12 +29,17 @@ There is exactly one brand color.
 | `inkMuted`   | `secondaryLabelColor`         | `secondaryLabelColor`         | Metadata, hints |
 | `inkFaint`   | `tertiaryLabelColor`          | `tertiaryLabelColor`          | Quick-paste numbers, placeholders |
 | `hairline`   | `separatorColor`              | `separatorColor`              | Pane divider, footer rule |
-| `marker`     | `#FFD84D` @ 60% under text    | `#E8B73A` @ 30% under text    | Selection highlight, pin notch |
-| `markerInk`  | `#8A6A00`                     | `#F2C94C`                     | Pin glyph, active filter text |
+| `marker`     | `#FFD84D` @ 60% under text    | `#FFD84D` @ 36% under text    | Selection highlight, active filter |
+| `markerInk`  | `#8A6A00`                     | `#FFE59A`                     | Active filter text, on the marker |
 | `markerNotch`| `#F5C400`                     | `#E8B73A`                     | Pin notch (full strength, so a 3 pt mark reads) |
 
-With Increase Contrast on, `marker` rises to 95% (light) / 50% (dark) and
-`markerInk` darkens to `#5C4600` / lightens to `#FFE08A`.
+With Increase Contrast on, `marker` rises to 95% (light) / `#E8B73A` @ 50%
+(dark) and `markerInk` darkens to `#5C4600` / lightens to `#FFF4CC`.
+
+The dark marker is the light one's yellow, as strong as white text allows:
+over the dark material (≈ `#1E1E1E`–`#282828`) it comes to about
+`#6F612F`–`#756735`, and label text on it keeps 4.6–5:1. Any stronger and
+the text drops under 4.5:1; the old `#E8B73A` @ 30% read as a brown band.
 
 `marker` is a highlighter, not a button color: it is drawn as a soft,
 rounded swipe *behind* the selected row's text, the way you'd mark a line on
@@ -104,9 +109,16 @@ the screen's visible frame). Two panes under one search bar, a quiet footer.
 - Filter tokens are quiet text at the end of the search bar, not a
   segmented control.
 - The footer shows only hints that apply now; with nothing selected it
-  says "esc Close" (or "esc Clear search"). Clearing history replaces the
-  footer with an inline confirmation ("Clear 13 unpinned clips? Pinned
-  clips stay." ⏎ / esc), never a modal, which would activate Kept.
+  says "esc Close" (or "esc Clear search"), and "⌘⌫ Delete" only while
+  the search is empty. Clearing history replaces the footer with an
+  inline confirmation ("Clear 13 unpinned clips? Pinned clips stay."
+  ⌥⌘⌫ Clear history · esc Cancel), never a modal, which would activate
+  Kept.
+- While searching, the words of the query that match a row's title are
+  set semibold, same size and ink: no color, no underline (case-,
+  diacritic- and width-insensitive, like the search). When a text row's
+  first match sits past where the row truncates, the row starts with "…"
+  just before it.
 - The footer names what the keys do with the current settings: "⏎ Paste
   ⌥⏎ Paste as plain text ⌘⏎ Copy"; with "always paste plain text" ⏎ and
   ⌥⏎ swap ("Paste as plain text" / "Paste with formatting"); with "paste
@@ -173,7 +185,11 @@ bottom of the active screen for the global shortcut):
 
 The full shortcut map lives in [RESEARCH.md](RESEARCH.md#keyboard-shortcut-map).
 The search field always has focus, so plain letters and ⌫ edit the query;
-every list action uses a modifier (⌘⌫ deletes a clip, ⌘P pins).
+every list action uses a modifier (⌘⌫ deletes a clip, ⌘P pins). Keys
+that destroy something never share a habit with typing or pasting: ⌘⌫
+deletes the clip only while the search is empty (with a query it deletes
+to the start of the line, as in any field), and the clear bar takes only
+⌥⌘⌫ again or its button, never ⏎.
 
 In the panel, as built:
 
@@ -185,7 +201,8 @@ In the panel, as built:
 | ⌘1–⌘9 · ⌥⌘1–⌥⌘9 | Paste row N · in the other format |
 | ⌘P | Pin / unpin |
 | ⌥⌘↑ ⌥⌘↓ | Move the selected pin up / down (also: drag a pin) |
-| ⌘⌫ · ⌥⌘⌫ | Delete · clear unpinned clips (inline confirm) |
+| ⌘⌫ | Delete the selected clip (empty search only) |
+| ⌥⌘⌫, then ⌥⌘⌫ again | Clear unpinned clips (inline confirm; esc cancels, ⏎ does nothing) |
 | Tab ⇧Tab | Next / previous type filter |
 | ⌃U · Esc | Clear the search · clear, then close |
 | ⌘, | Settings |
@@ -218,6 +235,10 @@ Quit Kept                ⌘Q
 
 - Relaunching Kept, and ⌘, in the panel, open Settings: macOS 26 can hide
   the icon, and those are the ways back in.
+- The icon can be ⌘-dragged out of the menu bar, and Settings › General
+  has "Show Kept in the menu bar". Both set one preference the item
+  follows; relaunching Kept turns it back on, so the icon can always be
+  restored.
 
 ## Icon
 
@@ -280,7 +301,9 @@ pane used.
   They say what the control does, not what it is.
 - **General** — Startup: Open Kept at login (with an "Open Login Items…"
   button and a note when macOS wants approval or registering failed, which
-  unsigned builds often do). History size: a menu of 100 / 250 / 500 /
+  unsigned builds often do). Menu bar: Show Kept in the menu bar, with a
+  note naming the recorded shortcut and that opening Kept again brings the
+  icon back. History size: a menu of 100 / 250 / 500 /
   1,000 / 2,500 / 5,000 / 10,000 clips. Pasting: Paste into the active app,
   with a line saying what happens now and "Open Privacy & Security…" while
   the permission is missing; Always paste as plain text. Open Kept: center
@@ -288,22 +311,73 @@ pane used.
 - **Shortcuts** — a recorder per global shortcut (Open Kept, Paste
   clipboard as plain text, Pause or resume capture), each with what it
   does; a closing note to include ⌘ or ⌃.
-- **Privacy** — Capture: Pause capture, Ignore copies from other devices,
+- **Privacy** — Clipboard (only on macOS 15.4+ when macOS asks or denies
+  Kept's clipboard reads): "Kept can't see what you copy until you allow
+  it.", where to change it (Privacy & Security › Paste from Other Apps;
+  from macOS 27 "look for" it, since the pane may move) and "Open Privacy
+  & Security…". Capture: Pause capture, Ignore copies from other devices,
   Keep images, Keep files. Excluded apps: a bordered list (app icon and
-  name; "Not installed" and the bundle ID for missing apps) with borderless
+  name; a missing app dimmed with "Not installed", named from a small
+  table for the default password managers, else by bundle ID, which the
+  row's tooltip always shows) with borderless
   + and − below it and "Restore defaults" on the right, as in System
   Settings. History: "Clear history…" and a one-line summary ("13 clips in
   your history, 2 of them pinned.").
 - **About** — the 96 pt icon, the name, "Version 0.1.0 (128)", one line of
-  what Kept is, the project link, the license; a quiet note only when the
-  history skipped unreadable clips or couldn't open.
+  what Kept is, the project link, the license, a small "Show welcome
+  window" button; a quiet note only when the history skipped unreadable
+  clips or couldn't open.
 - Snapshots: `settings-<pane>-light/dark.png` for each pane (General also
   with the approval and permission notes showing) and
   `settings-window-light.png` with the title bar and toolbar.
+- Closing Settings gives the keyboard back to the last app the user was
+  in (even one they switched to while Settings was open), or hides Kept
+  when there's none, so Kept never stays active with no window.
 - Clearing from Settings asks with an alert (Settings is already active):
   "Clear history" keeps pins and is the default, "Clear everything" is
   marked destructive, "Cancel" answers Esc. With no pins there are only
   "Clear history" and "Cancel".
+
+## Welcome window
+
+**As built (A4).** Opens once, by itself, at the first launch
+(`welcomeShown`), and again from About. A titled window with a transparent
+title bar, 380 pt wide, everything centered like a modern alert:
+
+```
+              [72 pt icon]
+        Kept is in your menu bar                       17 pt semibold
+  Press ⇧⌘V in any app, or click Kept's icon           13 pt, the shortcut
+  in the menu bar, to see what you've copied.          as recorded, semibold
+  Pasting into other apps needs your permission.       11 pt secondary
+  Kept asks for it the first time you paste.
+  ┌ Kept can't see what you copy until you allow it. ┐  only when macOS
+  │ …Privacy & Security › Paste from Other Apps…     │  asks or denies
+  └             [Open Privacy & Security…]           ┘  (wash, hairline)
+           ☐ Open Kept at login
+        [ Open Kept ]   [  Done  ]                     large, Done default
+```
+
+- No marketing, no feature tour: where Kept is, how to open it, the one
+  permission it will ask for, and login.
+- "Open Kept" closes the window, waits for activation to go back to the
+  user's app, then opens the panel, so its first paste lands there. "Done"
+  (⏎, esc) closes it and returns focus like Settings.
+- Snapshots: `welcome-light/dark.png`, `welcome-clipboard-denied-*`, and
+  `settings-privacy-clipboard-access-*`.
+
+## Accessibility
+
+- VoiceOver: each row is one element, "Link, github.com/…, 9 minutes ago,
+  from Safari, pinned", marked selected, that pastes when activated and
+  offers Paste, the other format, Pin / Unpin and Delete as actions. The
+  search field keeps the keyboard, so moving the selection (and opening
+  the clear bar) is announced: the row's label and "4 of 15".
+- Reduce Motion: no fades or scale. Reduce Transparency: the panel draws
+  the opaque window background itself. Increase Contrast: the stronger
+  marker and ink above (`search-increased-contrast-*` snapshots).
+- Keyboard focus is visible where it moves (Settings, the welcome window:
+  system controls); in the panel the highlighter is the focus.
 
 ## Writing
 

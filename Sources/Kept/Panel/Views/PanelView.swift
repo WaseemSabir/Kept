@@ -22,14 +22,15 @@ struct PanelView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .modifier(PanelAppearEffect(trigger: model.presentationCount, isEnabled: !reduceMotion))
         .background {
             // The material turns opaque under Reduce Transparency; the
-            // panel doesn't count on it and draws the window background.
+            // panel doesn't count on it and draws the window background
+            // (outside the appear effect, so it never scales with it).
             if reduceTransparency {
                 Theme.Colors.panelBackground.ignoresSafeArea()
             }
         }
-        .modifier(PanelAppearEffect(trigger: model.presentationCount, isEnabled: !reduceMotion))
     }
 
     @ViewBuilder

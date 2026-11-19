@@ -157,13 +157,42 @@ Notes (M5–M7, A3):
 - ☑ File icons and multi-file items; preview of images and files
 
 ## M9 — Onboarding, accessibility, release
-- ◐ First-paste permission sheet with version-aware copy; pasteboard privacy check (`accessBehavior`) — A2 shows a version-aware copy-only hint with an "Allow Kept to paste…" button on the first paste without access; no sheet or `accessBehavior` check yet
-- ◐ VoiceOver labels; Reduce Motion / Transparency / Increase Contrast — panel rows, filters and hints are labelled; no motion under Reduce Motion; stronger marker under Increase Contrast; needs a VoiceOver pass
+- ☑ First-launch welcome window (where Kept is, the recorded shortcut, the paste permission, open at login; again from About)
+- ☑ First-paste permission: version-aware copy-only hint with "Allow Kept to paste…" (A2)
+- ☑ Pasteboard privacy check (`accessBehavior`, macOS 15.4+): ask / deny shows where to allow Kept, in the welcome window and Settings › Privacy
+- ☑ VoiceOver labels and announcements; Reduce Motion / Transparency / Increase Contrast
 - ☑ Snapshot renders of the panel for design review in CI (`Kept --render-snapshots <dir>`, artifact `panel-snapshots`)
 - ☑ Release workflow (ad-hoc → signed → notarized when secrets exist) — `release.yml`, `scripts/package.sh`, docs/RELEASING.md
-- ☐ README screenshots
+- ☑ README screenshots (`docs/images/`)
+
+Notes (A4, UI/UX fixes and polish):
+- Closing Settings (or the welcome window) gives the keyboard to the last app other than Kept
+  that was active (`ActiveAppTracker`, from `NSWorkspace.didActivateApplicationNotification`),
+  or hides Kept when there's none (`FocusReturn`). Before, relaunching Kept and closing
+  Settings left Kept active with no window, and ⇧⌘V + ⏎ only copied.
+- The menu bar icon follows `showsMenuBarIcon` both ways: ⌘-dragging it out turns it off,
+  Settings › General › "Show Kept in the menu bar" sets it, and relaunching Kept turns it on.
+- Destructive keys: ⌘⌫ deletes a clip only with an empty search (otherwise it edits the
+  field); the clear bar takes only ⌥⌘⌫ again or its button, never ⏎.
+- The list scrolls on `scrollToken`, which moves with the selected *row* (pins, pin moves,
+  new copies), from a small view of its own; rows read the selection themselves, so arrow keys
+  don't rebuild a 10,000-row list. The selected index is stored. While the panel is hidden
+  its query is dropped and history changes don't run a search.
+- VoiceOver: one element per row with a sentence label and a default Paste action; moving the
+  selection is announced ("…, 9 minutes ago, from Safari. 4 of 15."). The list's selected
+  child isn't exposed as such (SwiftUI has no API for it); announcements stand in.
+- Matched query words are semibold in row titles, and a row whose first match would be
+  truncated starts just before it. The dark marker is `#FFD84D` @ 36% (≈5:1 for white text).
+- Excluded password managers that aren't installed show their names. The welcome window,
+  clipboard access note and an Increase Contrast scene are in the snapshots.
+- Needs a hand check on a Mac: VoiceOver announcements, the menu bar icon's ⌘-drag and
+  restore, focus after Settings with and without another app, and `accessBehavior` on 15.4+
+  (CI can't change it).
 
 ## Later (P2, only if it stays lean)
+- Expose the panel's selected row to VoiceOver as the list's selected child (needs an AppKit
+  list or a SwiftUI API for it)
+- A deep link to the Paste from Other Apps pane, once macOS documents one
 - Edit / rename clips (⌘E / ⌘R) — turns pins into snippets
 - OCR text in images for search
 - Paste stack / multi-paste

@@ -52,20 +52,25 @@ Sources/
                               KeystrokePosting / PasteKeystrokePoster, KeyboardLayout, UnicodeKeyLayout,
                               PasteKeyResolver (+ KeyTranslating)
     Permissions/              PermissionChecking / PostEventPermission, KeyboardFocusChecking /
-                              SystemKeyboardFocus, PasteOnboarding (later: PasteboardAccess)
+                              SystemKeyboardFocus, PasteOnboarding, PasteboardAccess (+ PasteboardAccessChecking /
+                              SystemPasteboardAccess)
     PasteHint/                PasteHintController (+ PasteHintPresenting), HintPanel, PasteHintView, PasteHintCopy
     Hotkeys/                  KeyboardShortcuts.Name definitions + HotkeyController
     Panel/                    FloatingPanel (NSPanel), PanelController, PanelViewModel, PanelKeyRouter
-                              (+ KeyPress, PanelCommand), ClipDisplay, ClipFacts, PreviewLoader, Views/
-    MenuBar/                  StatusItemController, StatusMenu (+ StatusMenuState), MenuBarIcon
+                              (+ KeyPress, PanelCommand), ClipDisplay, ClipFacts, ClipAccessibility,
+                              MatchHighlighter, PreviewLoader, Views/
+    MenuBar/                  StatusItemController, StatusMenu (+ StatusMenuState), MenuBarIcon,
+                              MenuBarIconPreference
     Settings/                 SettingsWindowController, SettingsWindow, SettingsTabViewController,
                               SettingsModel, SettingsPane; LoginItemControlling / MainAppLoginItem
                               (+ LoginItemStatus, LaunchAtLoginState); SettingsDialogPresenting /
                               SettingsDialogs (+ ClearHistoryPrompt, ClearHistoryChoice); ExcludedApp,
                               AboutInfo; Views/ (panes, SettingsForm, SettingsRow, SettingsNote)
+    Welcome/                  WelcomeWindowController, WelcomeView, WelcomeCopy, WelcomeState
     DesignSystem/             Theme (tokens), AdaptiveColor, Marker (highlighter), KeyCap, Hairline
     Snapshots/                SnapshotRenderer, SettingsSnapshots, SampleHistory (`Kept --render-snapshots <dir>`)
-    Support/                  IconCache, ThumbnailCache, AgeFormatter, RichTextDecoder, Log
+    Support/                  IconCache, ThumbnailCache, AgeFormatter, RichTextDecoder, Log,
+                              ActiveAppTracker (+ FocusReturn)
 Tests/
   KeptCoreTests/              Swift Testing (`import Testing`); runs on Linux + macOS
   KeptTests/                  macOS-only tests for app-layer logic that can't live in core
@@ -210,10 +215,22 @@ they are 10 minutes old; nothing when references can't be read).
   `charactersIgnoringModifiers`, so shortcuts follow the layout) or lets it
   through to the search field. ⌘X/⌘C/⌘V/⌘A/⌘Z are sent to the field
   directly, since an agent app has no Edit menu.
-- **PanelViewModel** — `@Observable`; holds query, filter, selection;
-  derives visible clips via `ClipSearch`; carries out commands (move,
-  paste, pin, move a pin, delete, clear with an inline confirm, open
-  Settings); refreshes when the store changes. A row's context menu runs
+- **PanelViewModel** — `@Observable`; holds query, filter, selection
+  (`selectedID` and `selectedIndex`, plus `scrollToken`, which moves
+  whenever the selected *row* does, so the list scrolls after pins, pin
+  moves and new copies too); derives visible clips via `ClipSearch`;
+  carries out commands (move, paste, pin, move a pin, delete, clear with
+  an inline confirm, open Settings); refreshes when the store changes,
+  except while the panel is hidden (`panelDidHide` also drops the query).
+  Key presses go through `perform(_:)`, which leaves ⌘⌫ to the search
+  field while there's a query and lets only ⌥⌘⌫ confirm the clear bar;
+  the context menu uses `perform(_:on:)`. Moving the selection asks
+  `announce` (VoiceOver, via `PanelController`) to speak the row's
+  `ClipAccessibility` label. The list never reads the selection itself:
+  each row does, and a small `SelectionScroller` view scrolls, so an arrow
+  key doesn't rebuild every row. `MatchHighlighter` finds the query's
+  words in a row's title for display (semibold runs, and an excerpt when
+  the first match would be truncated). A row's context menu runs
   the same commands on the clicked clip (`perform(_:on:)`). Pins reorder
   (⌥⌘↑ / ⌥⌘↓, or dragging, `dragPin(_:toRow:)`) only while the list shows
   them in their own order (`canReorderPins`: no search, filter All or
@@ -228,11 +245,13 @@ they are 10 minutes old; nothing when references can't be read).
   Settings pane offscreen at 2× in light and dark (opaque background:
   vibrancy doesn't draw offscreen), draws the whole Settings window with
   its toolbar (light only: the toolbar's selection glass doesn't draw
-  offscreen in dark mode), and exits. Settings render from a throwaway preferences
+  offscreen in dark mode), the welcome window's content, and a search
+  under the Increase Contrast appearance, and exits. Settings render from a throwaway preferences
   domain and stand-ins for the login item, permission and dialogs. CI
   runs it and uploads the PNGs as the `panel-snapshots` artifact.
 - **Menu bar** — `StatusItemController` owns the `NSStatusItem`: a click
-  toggles the panel below the icon; a right-, ⌃- or ⌥-click attaches
+  toggles the panel below the icon; a right-, ⌃- or ⌥-click
+  (`wantsMenu(_:modifiers:)`, pure) attaches
   `StatusMenu` and calls `performClick` (replaying the mouse event broke
   on macOS 27), detaching it in `menuDidClose`. The menu is refreshed
   from `StatusMenuState` (a value: pause title, ignore-next-copy state)
@@ -247,8 +266,11 @@ they are 10 minutes old; nothing when references can't be read).
   fixed width, takes the selected pane's preferred height with its top
   edge fixed, and remembers the last pane (UserDefaults `settingsPane`;
   `-settingsPane shortcuts` on the command line picks one). Showing it
-  activates Kept (`NSApp.activate()`); closing it yields activation back
-  to the app that was in front. `SettingsModel` (`@Observable`) binds the
+  activates Kept (`NSApp.activate()`); closing it hands activation to the
+  last app other than Kept that was active (`ActiveAppTracker`, from
+  `NSWorkspace.didActivateApplicationNotification`), or hides Kept when
+  there's none (`FocusReturn`, pure), unless another Kept window stays
+  open. `SettingsModel` (`@Observable`) binds the
   panes to `Preferences` and adds what needs the system, behind
   protocols: `LoginItemControlling` (`MainAppLoginItem` →
   `SMAppService.mainApp`; status re-read whenever the window becomes key,
@@ -258,12 +280,25 @@ they are 10 minutes old; nothing when references can't be read).
   /Applications for excluded apps, read with the user-selected read-only
   entitlement; an `NSAlert` sheet built from `ClearHistoryPrompt`). The
   history size applies live through `HistoryStore.setHistoryLimit`.
+  `PasteboardAccessChecking` (`SystemPasteboardAccess`:
+  `NSPasteboard.general.accessBehavior` on macOS 15.4+, mapped to
+  `PasteboardAccess`) drives the clipboard note in Privacy and the
+  welcome window; `MenuBarIconPreference` backs "Show Kept in the menu
+  bar".
   About reads the version and build from the bundle (`AboutInfo`), the one
   place they live.
+- **Welcome** — `WelcomeWindowController` (made by `AppDelegate`) shows
+  `WelcomeView` once at the first launch (`WelcomeState`, UserDefaults
+  `welcomeShown`) and from About. It reuses the Settings model (login item,
+  clipboard access) and `ActiveAppTracker`; "Open Kept" waits for Kept to
+  resign active before showing the panel. `PanelController.show` unhides
+  Kept first, since closing a window with no app to return to hides it.
 - **Escape hatches** — macOS 26 can hide the menu bar icon with no API to
-  tell, so relaunching Kept (`applicationShouldHandleReopen`) opens
-  Settings, ⌘, in the panel opens it, and the global shortcut keeps
-  working.
+  tell, so relaunching Kept (`applicationShouldHandleReopen`) turns
+  `MenuBarIconPreference` back on (the icon can also be ⌘-dragged away or
+  hidden in Settings; `StatusItemController` follows the preference and
+  KVO on `isVisible` both ways) and opens Settings, ⌘, in the panel opens
+  it, and the global shortcut keeps working.
 - **Hotkeys** — `KeyboardShortcuts` package (Carbon `RegisterEventHotKey`
   under the hood; no permission prompt; recorder UI for settings).
   `HotkeyController` listens for `.togglePanel` (⇧⌘V), `.pastePlainText`
