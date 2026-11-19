@@ -3,6 +3,8 @@ public enum PreferenceDefaults {
     /// Unpinned clips kept; pins don't count.
     public static let historyLimit = 500
     public static let historyLimitRange = 50...10_000
+    /// The history sizes Settings offers.
+    public static let historyLimitChoices = [100, 250, 500, 1_000, 2_500, 5_000, 10_000]
     public static let pasteDirectly = true
     public static let alwaysPastePlainText = false
     public static let panelPosition = PanelPosition.activeScreenCenter
@@ -24,4 +26,12 @@ public enum PreferenceDefaults {
     /// 1 MB to 100 MB: everything Kept stores is read into memory on the
     /// main actor when it's recorded or pasted.
     public static let maxItemBytesRange = (1024 * 1024)...(100 * 1024 * 1024)
+
+    /// The history sizes to offer: `historyLimitChoices`, plus `current` in
+    /// its place when it isn't one of them (set by an older version, say),
+    /// so the menu always shows what's in effect.
+    public static func historyLimitChoices(including current: Int) -> [Int] {
+        guard !historyLimitChoices.contains(current) else { return historyLimitChoices }
+        return (historyLimitChoices + [current]).sorted()
+    }
 }

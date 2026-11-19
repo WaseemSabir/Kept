@@ -121,6 +121,62 @@ struct PreferencesTests {
         #expect(settings.maxItemBytes == 2 * 1024 * 1024)
     }
 
+    @Test("Adds excluded apps once, at the end, ignoring case and blanks")
+    func excludesApps() throws {
+        defer { cleanUp() }
+        let preferences = Preferences(defaults: try makeDefaults())
+        preferences.excludedBundleIDs = ["com.apple.Passwords"]
+
+        #expect(preferences.excludeApp("com.example.Vault"))
+        #expect(!preferences.excludeApp("COM.EXAMPLE.VAULT"))
+        #expect(!preferences.excludeApp("com.apple.passwords"))
+        #expect(!preferences.excludeApp("  "))
+        #expect(preferences.excludeApp(" org.example.Notes\n"))
+        #expect(preferences.excludedBundleIDs == ["com.apple.Passwords", "com.example.Vault", "org.example.Notes"])
+        #expect(preferences.isExcluded("com.EXAMPLE.vault"))
+        #expect(!preferences.isExcluded("com.example.Other"))
+        #expect(preferences.captureSettings.excludes(bundleID: "org.example.notes"))
+    }
+
+    @Test("Removes excluded apps and keeps the rest in order")
+    func removesExcludedApps() throws {
+        defer { cleanUp() }
+        let preferences = Preferences(defaults: try makeDefaults())
+        preferences.excludedBundleIDs = ["a.one", "b.two", "c.three", "d.four"]
+
+        preferences.removeExcludedApps(["B.TWO", "d.four", "not.there"])
+        #expect(preferences.excludedBundleIDs == ["a.one", "c.three"])
+        preferences.removeExcludedApps([])
+        #expect(preferences.excludedBundleIDs == ["a.one", "c.three"])
+        #expect(Preferences(defaults: try makeDefaults()).excludedBundleIDs == ["a.one", "c.three"])
+    }
+
+    @Test("Restores the default excluded apps")
+    func restoresDefaultExcludedApps() throws {
+        defer { cleanUp() }
+        let preferences = Preferences(defaults: try makeDefaults())
+        #expect(preferences.excludedAppsAreDefault)
+
+        preferences.excludeApp("com.example.Vault")
+        preferences.removeExcludedApps(["com.apple.Passwords"])
+        #expect(!preferences.excludedAppsAreDefault)
+
+        preferences.restoreDefaultExcludedApps()
+        #expect(preferences.excludedAppsAreDefault)
+        #expect(preferences.excludedBundleIDs == PreferenceDefaults.excludedBundleIDs)
+        #expect(Preferences(defaults: try makeDefaults()).excludedAppsAreDefault)
+    }
+
+    @Test("Offers the standard history sizes, plus the current one if it's different")
+    func historyLimitChoices() {
+        #expect(PreferenceDefaults.historyLimitChoices == [100, 250, 500, 1_000, 2_500, 5_000, 10_000])
+        #expect(PreferenceDefaults.historyLimitChoices.contains(PreferenceDefaults.historyLimit))
+        #expect(PreferenceDefaults.historyLimitChoices.allSatisfy(PreferenceDefaults.historyLimitRange.contains))
+        #expect(PreferenceDefaults.historyLimitChoices(including: 500) == PreferenceDefaults.historyLimitChoices)
+        #expect(PreferenceDefaults.historyLimitChoices(including: 1_200) == [100, 250, 500, 1_000, 1_200, 2_500, 5_000, 10_000])
+        #expect(PreferenceDefaults.historyLimitChoices(including: 50).first == 50)
+    }
+
     @Test("Notifies observers of changes")
     func notifiesObservers() throws {
         defer { cleanUp() }

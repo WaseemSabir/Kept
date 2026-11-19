@@ -98,6 +98,43 @@ public final class Preferences {
         )
     }
 
+    // MARK: Excluded apps
+
+    /// Whether the excluded apps are the defaults, in the default order.
+    public var excludedAppsAreDefault: Bool {
+        excludedBundleIDs == PreferenceDefaults.excludedBundleIDs
+    }
+
+    /// Adds `bundleID` to the end of the excluded apps. Returns `false`,
+    /// changing nothing, when it's empty or already excluded (bundle IDs
+    /// compare without regard to case, as capture compares them).
+    @discardableResult
+    public func excludeApp(_ bundleID: String) -> Bool {
+        let bundleID = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !bundleID.isEmpty, !isExcluded(bundleID) else { return false }
+        excludedBundleIDs.append(bundleID)
+        return true
+    }
+
+    /// Whether copies from `bundleID` are never recorded.
+    public func isExcluded(_ bundleID: String) -> Bool {
+        let key = bundleID.lowercased()
+        return excludedBundleIDs.contains { $0.lowercased() == key }
+    }
+
+    /// Removes these bundle IDs (matched without regard to case) from the
+    /// excluded apps; the rest keep their order.
+    public func removeExcludedApps(_ bundleIDs: Set<String>) {
+        let keys = Set(bundleIDs.map { $0.lowercased() })
+        let remaining = excludedBundleIDs.filter { !keys.contains($0.lowercased()) }
+        if remaining != excludedBundleIDs { excludedBundleIDs = remaining }
+    }
+
+    /// Puts back the default excluded apps, dropping any the user added.
+    public func restoreDefaultExcludedApps() {
+        excludedBundleIDs = PreferenceDefaults.excludedBundleIDs
+    }
+
     /// The `UserDefaults` keys.
     enum Key {
         static let historyLimit = "historyLimit"

@@ -60,23 +60,17 @@ jobs:
           TAG: ${{ github.ref_name }}
           INPUT_VERSION: ${{ inputs.version }}
         run: |
+          # Resources/Info.plist is the only place the version lives; the app
+          # reads it from its bundle (About in Settings).
           plist="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
-          core="$(sed -n 's/.*static let current = "\(.*\)".*/\1/p' Sources/KeptCore/Support/KeptVersion.swift 2>/dev/null || true)"
           if [[ "$EVENT" == "push" ]]; then
             version="${TAG#v}"
             if [[ "$version" != "$plist" ]]; then
               echo "::error file=Resources/Info.plist::Tag $TAG doesn't match CFBundleShortVersionString ($plist). Bump the version, commit, and tag that commit."
               exit 1
             fi
-            if [[ -n "$core" && "$core" != "$plist" ]]; then
-              echo "::error file=Sources/KeptCore/Support/KeptVersion.swift::KeptVersion.current ($core) doesn't match Resources/Info.plist ($plist)."
-              exit 1
-            fi
           else
             version="${INPUT_VERSION:-$plist}"
-            if [[ -n "$core" && "$core" != "$plist" ]]; then
-              echo "::warning::KeptVersion.current ($core) doesn't match Resources/Info.plist ($plist)."
-            fi
           fi
           echo "Version: $version"
           echo "version=$version" >> "$GITHUB_OUTPUT"

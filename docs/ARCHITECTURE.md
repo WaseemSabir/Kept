@@ -41,8 +41,9 @@ Sources/
     Storage/                  SQLite wrapper (Database, Statement, Value, Error), HistorySchema (migrations),
                               BlobStore, HistoryStore, HistoryLimits, HistoryStoreError
     Search/                   ClipSearch (matching, ranking, kind filter), SearchKey (folded text)
-    Preferences/              Preferences (UserDefaults-backed), PreferenceDefaults (every default), PanelPosition
-    Support/                  SHA256, TextSanitizer, RTF/HTML text extractors, KeptVersion
+    Preferences/              Preferences (UserDefaults-backed), PreferenceDefaults (every default), PanelPosition,
+                              PanelPlacement (where the panel goes for each position)
+    Support/                  SHA256, TextSanitizer, RTF/HTML text extractors
   Kept/                       macOS app (executable target)
     App/                      main.swift, AppDelegate, AppEnvironment (composition root)
     Clipboard/                PasteboardMonitor, PasteboardReader, CaptureService, PasteboardWriter,

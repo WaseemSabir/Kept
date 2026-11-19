@@ -15,8 +15,9 @@ sources: [RESEARCH.md §11](RESEARCH.md#11-building-the-app-from-swiftpm-signing
 ## Versioning
 
 - **The version lives in `Resources/Info.plist`** (`CFBundleShortVersionString`,
-  `MAJOR.MINOR.PATCH`). `KeptVersion.current` in KeptCore mirrors it; the
-  release workflow refuses a tag that doesn't match both.
+  `MAJOR.MINOR.PATCH`), and only there: the app reads it from its bundle
+  (Settings › About), and the release workflow refuses a tag that doesn't
+  match it.
 - `build-app.sh` stamps the copy inside the bundle, never the source file:
   - `CFBundleShortVersionString`: `VERSION` if set (for example `0.2.0-dev` for a
     dry run), otherwise the value in `Info.plist`.
@@ -33,7 +34,6 @@ sources: [RESEARCH.md §11](RESEARCH.md#11-building-the-app-from-swiftpm-signing
 
    ```sh
    plutil -replace CFBundleShortVersionString -string 0.2.0 Resources/Info.plist
-   # and KeptVersion.current in Sources/KeptCore/Support/KeptVersion.swift
    git commit -am "Bump the version to 0.2.0"
    git push origin master
    ```
