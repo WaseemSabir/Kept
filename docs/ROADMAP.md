@@ -39,6 +39,12 @@ Notes:
 - New pins go to the end of the pinned section; `pinOrder` stays 0…n-1.
 - `representations(for:)` returns `[PasteboardItem]` (typed items, not tuples).
 - Also done here: `ClipSearch` (M3) and the `Preferences` model (M6), both in core.
+- Core review fixes (after M1/M2): opening skips unreadable rows (`skippedRecordCount`) and
+  reports failed housekeeping in `openWarnings` instead of throwing; blob files are fsync'd
+  before rename and verified before reuse; database files 0600, folders 0700, 5 s busy
+  timeout; unpinning moves a clip to the top (`unpin(_:at:)`); the item cap tops out at
+  100 MB. Search folding is table-based (10,000 short accented/Cyrillic clips fold in ~20 ms
+  in release) and fuzzy matching counts typed characters and matches whole scalars.
 
 ## M2 — Clipboard capture
 - ☑ `PasteboardSnapshot` + `CapturePolicy` (core): nspasteboard.org markers, legacy password types, excluded apps, whitespace-only, size caps, skipped heavy types
@@ -52,7 +58,15 @@ Notes:
   must resolve Finder's file reference URLs (`file:///.file/id=…`) before building a clip.
 - Core reads PNG sizes only; the app supplies an ImageIO `ImageInspecting` for TIFF/JPEG/HEIC.
 - `ClipBuilder` is pure and `Sendable`; run it off the main actor for large images (pure-Swift
-  SHA-256 hashes ~220 MB/s in release).
+  SHA-256 hashes ~220 MB/s in release). It pre-hashes representations over 64 KB, which
+  `HistoryStore.record` reuses as blob names.
+- Defence in depth: the reader passes `NSPasteboard.types` as `declaredTypes`, and both
+  `CapturePolicy.decision(for:)` and `ClipBuilder` refuse privacy markers found there.
+- Dedup hashes: text as NFC with LF line endings; every primary image in order; images beat a
+  bare `public.url`. Colors need ASCII hex; `#RGB`/`#RGBA` only when mixing digits and letters
+  or repeating one digit, so `#123` and `#cafe` stay text.
+- HTML/RTF extraction and the text sanitizer are linear on hostile input (tested with lone
+  `<`, unclosed comments, deep RTF nesting, joiner/tag/skin-tone chains, multi-MB lines).
 
 ## M3 — The panel
 - ☑ Non-activating floating `NSPanel` hosting SwiftUI; centered on the active screen (M0)
