@@ -50,10 +50,13 @@ struct PasteboardReader {
         let items = (pasteboard.pasteboardItems ?? []).compactMap { Self.capturedItem($0) }
         guard pasteboard.changeCount == changeCount else { return .changedDuringRead }
         guard !items.isEmpty else { return .ignored(.empty) }
+        // Every declared type goes along, markers included, so the builder
+        // can refuse a marked copy on its own as well.
         return .snapshot(PasteboardSnapshot(
             items: items,
             changeCount: changeCount,
-            sourceBundleID: source
+            sourceBundleID: source,
+            declaredTypes: types
         ))
     }
 

@@ -32,6 +32,8 @@ struct PasteboardReaderTests {
         #expect(snapshot.items.count == 1)
         #expect(snapshot.items.first?.types == [.string])
         #expect(snapshot.items.first?.data(for: .string) == Data("Hello".utf8))
+        // The source marker was declared but isn't part of any captured item.
+        #expect(snapshot.declaredTypes.contains(.source))
     }
 
     @Test("Falls back to the frontmost app")
