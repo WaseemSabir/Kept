@@ -9,24 +9,25 @@ sources: [RESEARCH.md §11](RESEARCH.md#11-building-the-app-from-swiftpm-signing
 | --- | --- |
 | `Resources/Info.plist` | Holds the version (`CFBundleShortVersionString`). |
 | `scripts/build-app.sh` (`make app`) | Builds, assembles and signs `dist/Kept.app`; stamps the version and build number. |
-| `scripts/package.sh` (`make release`) | Builds a universal app, signs it, notarizes and staples it when it can, then makes the zip, the disk image and checksums. |
-| `.github/workflows/release.yml` | Runs `package.sh` on a tag push and drafts a GitHub release; also runs by hand as a dry run. |
+| `scripts/package.sh` (`make release`) | Builds a universal app, signs it, notarizes and staples it when it can, then makes the disk image. |
+| `.github/workflows/release.yml` | Runs `package.sh` and publishes a GitHub release with the disk image, when you run it by hand or push a tag. |
 
 ## Versioning
 
 - **The version lives in `Resources/Info.plist`** (`CFBundleShortVersionString`,
   `MAJOR.MINOR.PATCH`), and only there: the app reads it from its bundle
-  (Settings › About), and the release workflow refuses a tag that doesn't
-  match it.
+  (Settings › About), the release workflow tags and names the release after
+  it, and it refuses a tag that doesn't match it or a version that's already
+  released.
 - `build-app.sh` stamps the copy inside the bundle, never the source file:
   - `CFBundleShortVersionString`: `VERSION` if set (for example `0.2.0-dev` for a
-    dry run), otherwise the value in `Info.plist`.
+    local test build), otherwise the value in `Info.plist`.
   - `CFBundleVersion`: `BUILD_NUMBER` if set, otherwise `git rev-list --count HEAD`.
     It only grows on `master`, and it's what macOS and Sparkle compare between
     builds. A shallow clone undercounts, so the release workflow fetches the
     full history. The `1` in the source `Info.plist` is a placeholder.
-- `package.sh` names the zip and the disk image after the stamped version
-  (`Kept-<version>.zip`).
+- `package.sh` names the disk image after the stamped version
+  (`Kept-<version>.dmg`).
 
 ## Cut a release
 
@@ -39,7 +40,9 @@ sources: [RESEARCH.md §11](RESEARCH.md#11-building-the-app-from-swiftpm-signing
    ```
 
    Wait for CI to pass on that commit.
-2. **Tag the commit and push the tag:**
+2. **Run the release:** Actions › Release › Run workflow, on `master`. It tags
+   that commit `v0.2.0` and releases it. Pushing the tag yourself does the
+   same:
 
    ```sh
    git tag -a v0.2.0 -m "Kept 0.2.0"
@@ -47,25 +50,21 @@ sources: [RESEARCH.md §11](RESEARCH.md#11-building-the-app-from-swiftpm-signing
    ```
 
 3. **The Release workflow** builds a universal app on the newest stable Xcode,
-   signs it, notarizes it if it can, and verifies what it made: checksums,
+   signs it, notarizes it if it can, and verifies the disk image before
+   anything is published: its checksum, the `Applications` link,
    `lipo -archs` (arm64 and x86_64), `codesign --verify --deep --strict` on the
-   zipped app and on the app inside the disk image, and a short launch of each
-   architecture (x86_64 under Rosetta). The run's summary lists the
-   architectures, the signature, whether it's notarized, and the checksums.
-   The files are kept as the run's `Kept-<version>` artifact and attached to a
-   **draft** release with generated notes.
-4. **Review the draft**: check the summary, download the disk image, try it on
-   the oldest supported macOS (14) and the newest, edit the notes, then publish.
-   If the build isn't notarized, say so in the notes and link to
-   [Gatekeeper](#gatekeeper-and-unnotarized-builds) and
-   [Accessibility](#accessibility-access-and-the-ad-hoc-trap) below.
+   app inside, and a short launch of each architecture (x86_64 under
+   Rosetta). The run's summary lists the architectures, the signature, whether
+   it's notarized, and the SHA-256.
+4. **The release is published** as the latest, with one file,
+   `Kept-<version>.dmg`, and notes that cover installing, the first launch of an
+   unnotarized build, the SHA-256 and the changes since the last release.
+   GitHub adds the source code archives itself.
 
-Re-running the workflow for a tag replaces the files on its draft release; it
-never changes a published release.
-
-**Dry run:** Actions › Release › Run workflow. Leave the version empty to use
-`Info.plist`'s, or enter one such as `0.2.0-dev`. You get the `Kept-<version>`
-artifact and no release.
+The workflow stops before building if the version is already released, or if
+its tag already marks a different commit, so bump the version first. If a run
+fails, fix the cause and run it again: nothing is published until the disk
+image passes its checks.
 
 **Locally** (macOS): `make release` makes an ad-hoc signed package in `dist/`.
 
@@ -79,11 +78,10 @@ signs and notarizes with your own certificate and a notary profile saved by
 
 ## What gets made
 
-| File | What |
-| --- | --- |
-| `dist/Kept-<version>.zip` | `Kept.app`, zipped with `ditto -c -k --keepParent` (also what Homebrew uses). |
-| `dist/Kept-<version>.dmg` | `Kept.app` and an `Applications` link, compressed (UDZO). Signed and notarized like the app when the secrets allow it. |
-| `dist/Kept-<version>.sha256` | SHA-256 of both; check with `shasum -a 256 -c Kept-<version>.sha256`. |
+`dist/Kept-<version>.dmg`: `Kept.app` and an `Applications` link, compressed
+(UDZO). Signed and notarized like the app when the secrets allow it. Its
+SHA-256 is in the release notes; check a download with
+`shasum -a 256 Kept-<version>.dmg`.
 
 ## Signing and notarization secrets
 
@@ -122,12 +120,18 @@ and staples with retries.
 ## Gatekeeper and unnotarized builds
 
 Browsers quarantine downloads, and Gatekeeper blocks a quarantined app that isn't
-notarized:
+notarized: "“Kept” Not Opened. Apple could not verify “Kept” is free of
+malware…", with **Done** and **Move to Trash**.
 
-- **macOS 15 and later:** open Kept and dismiss the warning, then click
-  **Open Anyway** in System Settings › Privacy & Security and confirm with an
-  administrator password. The Control-click › Open bypass no longer exists.
+- **macOS 15 and later:** click **Done**, then click **Open Anyway** in System
+  Settings › Privacy & Security (under Security) and confirm with an
+  administrator password or Touch ID. The Control-click › Open bypass no
+  longer exists.
 - **macOS 14:** Control-click Kept in Applications and choose **Open**.
+- **Any version:** `xattr -dr com.apple.quarantine /Applications/Kept.app` in
+  Terminal removes the quarantine, and Kept opens normally.
+
+The release notes of an unnotarized build carry these steps.
 
 Notarized releases open normally.
 
@@ -179,9 +183,9 @@ in Keychain Access and set Trust › Code Signing to Always Trust.
 ```ruby
 cask "kept" do
   version "0.2.0"
-  sha256 "…" # the zip's line in Kept-0.2.0.sha256
+  sha256 "…" # from the release notes
 
-  url "https://github.com/WaseemSabir/Kept/releases/download/v#{version}/Kept-#{version}.zip"
+  url "https://github.com/WaseemSabir/Kept/releases/download/v#{version}/Kept-#{version}.dmg"
   name "Kept"
   desc "Keyboard-first clipboard history"
   homepage "https://github.com/WaseemSabir/Kept"

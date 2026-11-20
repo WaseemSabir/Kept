@@ -68,15 +68,17 @@ the same actions.
 
 Kept needs macOS 14 Sonoma or later.
 
-1. Download `Kept-<version>.dmg` from
-   [Releases](https://github.com/WaseemSabir/Kept/releases), open it and drag
-   Kept to Applications.
+1. Download `Kept-<version>.dmg` from the
+   [latest release](https://github.com/WaseemSabir/Kept/releases/latest), open
+   it and drag Kept to Applications.
 2. Open Kept. A short welcome tells you where it is: in the menu bar, and on
    ⇧⌘V.
 
-If a release isn't notarized, macOS blocks the first launch. On macOS 15 and
-later, open Kept once, then click **Open Anyway** in System Settings ›
-Privacy & Security. On macOS 14, Control-click Kept and choose **Open**.
+**If macOS says "“Kept” Not Opened"**: releases aren't notarized by Apple
+yet, so macOS stops the first launch. On macOS 15 and later, click **Done**,
+then **Open Anyway** in System Settings › Privacy & Security (under Security).
+On macOS 14, Control-click Kept and choose **Open**. Or run
+`xattr -dr com.apple.quarantine /Applications/Kept.app` in Terminal.
 
 **Pasting for you needs your permission.** Kept pastes by pressing ⌘V in the
 app you were using, which macOS allows only once you turn Kept on in System

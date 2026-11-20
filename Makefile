@@ -14,7 +14,7 @@ app:
 run: app
 	open dist/Kept.app
 
-# macOS: universal dist/Kept-<version>.zip and .dmg plus SHA-256 checksums.
+# macOS: universal dist/Kept-<version>.dmg.
 # Signs with SIGN_IDENTITY and notarizes when notary credentials are set
 # (docs/RELEASING.md).
 release:

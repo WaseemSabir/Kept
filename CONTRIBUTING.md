@@ -10,7 +10,7 @@ swift build && swift test   # Linux: KeptCore only (needs libsqlite3-dev); macOS
 make app                    # macOS: dist/Kept.app, ad-hoc signed
 make run                    # macOS: builds and opens it
 UNIVERSAL=1 make app        # macOS: arm64 + x86_64
-make release                # macOS: universal zip, disk image and checksums in dist/
+make release                # macOS: universal disk image in dist/
 ```
 
 - On Linux, `Package.swift` leaves out the app targets, so only `KeptCore` and

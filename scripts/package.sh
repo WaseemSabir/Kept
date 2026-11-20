@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
 # Builds a universal, signed Kept.app (scripts/build-app.sh), notarizes and
-# staples it when notary credentials are set, and packages it for release:
-#
-#   dist/Kept-<version>.zip      the app, zipped with ditto
-#   dist/Kept-<version>.dmg      the app and an Applications link
-#   dist/Kept-<version>.sha256   SHA-256 checksums of both
+# staples it when notary credentials are set, and packages it for release as
+# dist/Kept-<version>.dmg: the app and an Applications link.
 #
 # Environment (see docs/RELEASING.md):
 #   SIGN_IDENTITY=…            codesign identity (default: "-", an ad-hoc signature);
@@ -124,9 +121,7 @@ step "Packaging $APP_NAME (identity: $SIGN_IDENTITY; notarize: $([[ $NOTARIZING 
 
 VERSION="$(plist_value CFBundleShortVersionString "$APP/Contents/Info.plist")"
 BUILD_NUMBER="$(plist_value CFBundleVersion "$APP/Contents/Info.plist")"
-ZIP="$DIST/$APP_NAME-$VERSION.zip"
 DMG="$DIST/$APP_NAME-$VERSION.dmg"
-SUMS="$DIST/$APP_NAME-$VERSION.sha256"
 
 step "Verifying ${APP#"$ROOT"/}"
 note "version: $VERSION ($BUILD_NUMBER)"
@@ -141,10 +136,6 @@ if ((NOTARIZING)); then
     notarize "$WORK/$APP_NAME-notarize.zip"
     staple "$APP"
 fi
-
-step "Zipping ${ZIP#"$ROOT"/}"
-rm -f "$ZIP"
-ditto -c -k --keepParent "$APP" "$ZIP"
 
 step "Making ${DMG#"$ROOT"/}"
 staging="$WORK/dmg"
@@ -172,9 +163,7 @@ if ((NOTARIZING)); then
     staple "$DMG"
 fi
 
-step "Checksums (${SUMS#"$ROOT"/})"
-(cd "$DIST" && shasum -a 256 "$(basename "$ZIP")" "$(basename "$DMG")" >"$(basename "$SUMS")")
-indent <"$SUMS"
+SHA256="$(shasum -a 256 "$DMG" | cut -d ' ' -f 1)"
 
 step "Gatekeeper"
 if spctl --assess --type execute --verbose=2 "$APP" 2>&1 | indent; then
@@ -193,18 +182,16 @@ else
 fi
 step "Packaged $APP_NAME $VERSION ($BUILD_NUMBER)"
 note "signature: ${signature:-$SIGN_IDENTITY}; notarized: $([[ $NOTARIZING == 1 ]] && echo yes || echo no)"
-for file in "$ZIP" "$DMG" "$SUMS"; do
-    note "${file#"$ROOT"/} ($(du -h "$file" | cut -f1 | tr -d ' '))"
-done
+note "${DMG#"$ROOT"/} ($(du -h "$DMG" | cut -f1 | tr -d ' '))"
+note "SHA-256: $SHA256"
 
 # Hand the results to GitHub Actions when running there.
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
     {
         echo "version=$VERSION"
         echo "build=$BUILD_NUMBER"
-        echo "zip=$ZIP"
         echo "dmg=$DMG"
-        echo "checksums=$SUMS"
+        echo "sha256=$SHA256"
         echo "signature=${signature:-$SIGN_IDENTITY}"
         echo "notarized=$([[ $NOTARIZING == 1 ]] && echo true || echo false)"
     } >>"$GITHUB_OUTPUT"

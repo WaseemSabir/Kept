@@ -1,8 +1,13 @@
 name: Release
 
-# A tag push (v1.2.0) builds, signs and packages Kept, then attaches the zip,
-# the disk image and their checksums to a draft GitHub release. Run it by hand
-# for a dry run: the files are kept as workflow artifacts and no release is made.
+# Builds, signs and packages Kept, then publishes a GitHub release with the
+# disk image (Kept-<version>.dmg). The version comes from Resources/Info.plist.
+#
+#   Actions › Release › Run workflow (on master)  → tags v<version> and releases it
+#   git push origin v<version>                    → releases that tag
+#
+# A version that's already released stops the run before it builds: bump
+# CFBundleShortVersionString first.
 #
 # Signing depends on which repository secrets exist (docs/RELEASING.md):
 #   none                                              → ad-hoc signature
@@ -13,14 +18,10 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Version to stamp for a dry run, e.g. 0.1.0-dev (default: Resources/Info.plist)"
-        required: false
-        type: string
 
+# One release at a time, never cancelled halfway.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}
   cancel-in-progress: false
 
 permissions:
@@ -37,11 +38,50 @@ jobs:
     timeout-minutes: 60
     outputs:
       version: ${{ steps.package.outputs.version }}
+      sha256: ${{ steps.package.outputs.sha256 }}
+      notarized: ${{ steps.package.outputs.notarized }}
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0 # the build number counts commits
+          fetch-depth: 0 # the build number counts commits; also fetches tags
           persist-credentials: false
+
+      - name: Resolve the version
+        id: version
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          TAG: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # Resources/Info.plist is the only place the version lives; the app
+          # reads it from its bundle (About in Settings).
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
+          tag="v$version"
+          if [[ "$EVENT" == "push" ]]; then
+            if [[ "$TAG" != "$tag" ]]; then
+              echo "::error file=Resources/Info.plist::Tag $TAG doesn't match CFBundleShortVersionString ($version). Bump the version, commit, and tag that commit."
+              exit 1
+            fi
+          else
+            if [[ "$REF" != "refs/heads/$DEFAULT_BRANCH" ]]; then
+              echo "::error::Run releases from $DEFAULT_BRANCH, not ${REF#refs/heads/}."
+              exit 1
+            fi
+            if tagged="$(git rev-parse -q --verify "refs/tags/$tag^{commit}")" &&
+               [[ "$tagged" != "$(git rev-parse HEAD)" ]]; then
+              echo "::error file=Resources/Info.plist::Tag $tag already marks another commit (${tagged:0:7}). Bump CFBundleShortVersionString for a new release."
+              exit 1
+            fi
+          fi
+          if [[ "$(gh release view "$tag" --json isDraft --jq .isDraft 2> /dev/null)" == "false" ]]; then
+            echo "::error file=Resources/Info.plist::Kept $version is already released. Bump CFBundleShortVersionString, commit, and run this again."
+            exit 1
+          fi
+          echo "Releasing Kept $version as $tag"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
@@ -52,28 +92,6 @@ jobs:
           sw_vers
           xcodebuild -version
           swift --version
-
-      - name: Resolve the version
-        id: version
-        env:
-          EVENT: ${{ github.event_name }}
-          TAG: ${{ github.ref_name }}
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          # Resources/Info.plist is the only place the version lives; the app
-          # reads it from its bundle (About in Settings).
-          plist="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
-          if [[ "$EVENT" == "push" ]]; then
-            version="${TAG#v}"
-            if [[ "$version" != "$plist" ]]; then
-              echo "::error file=Resources/Info.plist::Tag $TAG doesn't match CFBundleShortVersionString ($plist). Bump the version, commit, and tag that commit."
-              exit 1
-            fi
-          else
-            version="${INPUT_VERSION:-$plist}"
-          fi
-          echo "Version: $version"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Import the signing certificate
         id: signing
@@ -131,22 +149,30 @@ jobs:
           fi
           ./scripts/package.sh
 
-      - name: Verify the packages
+      - name: Verify the disk image
         env:
-          ZIP: ${{ steps.package.outputs.zip }}
           DMG: ${{ steps.package.outputs.dmg }}
-          CHECKSUMS: ${{ steps.package.outputs.checksums }}
+          SHA256: ${{ steps.package.outputs.sha256 }}
           VERSION: ${{ steps.package.outputs.version }}
           BUILD: ${{ steps.package.outputs.build }}
           SIGNATURE: ${{ steps.package.outputs.signature }}
           NOTARIZED: ${{ steps.package.outputs.notarized }}
         run: |
-          (cd "$(dirname "$CHECKSUMS")" && shasum -a 256 -c "$(basename "$CHECKSUMS")")
+          echo "$SHA256  $DMG" | shasum -a 256 -c -
 
-          # The app as users get it from the zip.
+          # The app as users get it: from the disk image.
+          mount="$RUNNER_TEMP/kept-dmg"
+          mkdir -p "$mount"
+          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$mount"
+          trap 'hdiutil detach "$mount" -force > /dev/null 2>&1 || true' EXIT
+          ls -l "$mount"
+          [[ -L "$mount/Applications" ]] || { echo "::error::The disk image has no Applications link"; exit 1; }
           check="$RUNNER_TEMP/check"
           rm -rf "$check" && mkdir -p "$check"
-          ditto -x -k "$ZIP" "$check"
+          ditto "$mount/Kept.app" "$check/Kept.app"
+          hdiutil detach "$mount"
+          trap - EXIT
+
           app="$check/Kept.app"
           binary="$app/Contents/MacOS/Kept"
           archs="$(lipo -archs "$binary")"
@@ -157,20 +183,9 @@ jobs:
           plutil -p "$app/Contents/Info.plist" | grep -E 'CFBundle(ShortVersionString|Version)'
           if [[ "$NOTARIZED" == "true" ]]; then
             xcrun stapler validate "$app"
+            xcrun stapler validate "$DMG"
             spctl --assess --type execute --verbose=2 "$app"
           fi
-
-          # The app as users get it from the disk image.
-          mount="$RUNNER_TEMP/kept-dmg"
-          mkdir -p "$mount"
-          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$mount"
-          trap 'hdiutil detach "$mount" -force > /dev/null 2>&1 || true' EXIT
-          ls -l "$mount"
-          [[ -L "$mount/Applications" ]] || { echo "::error::The disk image has no Applications link"; exit 1; }
-          codesign --verify --deep --strict --verbose=2 "$mount/Kept.app"
-          cmp "$mount/Kept.app/Contents/MacOS/Kept" "$binary"
-          hdiutil detach "$mount"
-          trap - EXIT
 
           # Launch each slice for a few seconds (x86_64 under Rosetta, if installed).
           smoke() {
@@ -201,21 +216,15 @@ jobs:
             echo "- Architectures: $archs"
             echo "- Signature: $SIGNATURE"
             echo "- Notarized: $NOTARIZED"
-            echo
-            echo '```'
-            cat "$CHECKSUMS"
-            echo '```'
+            echo "- SHA-256: \`$SHA256\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v7
         with:
           name: Kept-${{ steps.package.outputs.version }}
-          path: |
-            ${{ steps.package.outputs.zip }}
-            ${{ steps.package.outputs.dmg }}
-            ${{ steps.package.outputs.checksums }}
+          path: ${{ steps.package.outputs.dmg }}
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
 
       - name: Remove the signing keychain
         if: always()
@@ -228,9 +237,8 @@ jobs:
           rm -f "$RUNNER_TEMP/kept-signing.p12"
 
   release:
-    name: Draft GitHub release
+    name: Publish GitHub release
     needs: package
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -241,23 +249,62 @@ jobs:
           name: Kept-${{ needs.package.outputs.version }}
           path: dist
 
-      - name: Create or update the draft release
+      - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
           VERSION: ${{ needs.package.outputs.version }}
+          SHA256: ${{ needs.package.outputs.sha256 }}
+          NOTARIZED: ${{ needs.package.outputs.notarized }}
         run: |
-          files=("dist/Kept-$VERSION.zip" "dist/Kept-$VERSION.dmg" "dist/Kept-$VERSION.sha256")
-          ls -l "${files[@]}"
-          if draft="$(gh release view "$TAG" --json isDraft --jq .isDraft 2> /dev/null)"; then
+          tag="v$VERSION"
+          dmg="dist/Kept-$VERSION.dmg"
+          echo "$SHA256  $dmg" | sha256sum -c -
+
+          notes="$RUNNER_TEMP/notes.md"
+          {
+            echo "For macOS 14 Sonoma or later, on Apple silicon and Intel Macs."
+            echo
+            echo "### Install"
+            echo
+            echo "1. Download **Kept-$VERSION.dmg** below and open it."
+            cat <<'EOF'
+          2. Drag Kept to Applications, then open it from there.
+          3. Press ⇧⌘V to see what you've copied. Kept also lives in the menu bar.
+          4. The first time you paste, Kept asks for permission to paste into other apps. Until you allow it, Kept copies the clip and you press ⌘V.
+          EOF
+            if [[ "$NOTARIZED" != "true" ]]; then
+              cat <<'EOF'
+
+          ### If macOS says “Kept” Not Opened
+
+          This build isn't notarized by Apple, so macOS stops its first launch. To open it anyway:
+
+          - **macOS 15 and later:** click **Done**, open System Settings › Privacy & Security, scroll down to Security and click **Open Anyway** next to “Kept” was blocked to protect your Mac. Confirm with your password or Touch ID.
+          - **macOS 14:** Control-click Kept in Applications, choose **Open**, then click **Open**.
+          - **Or in Terminal:** `xattr -dr com.apple.quarantine /Applications/Kept.app`
+
+          You do this once per version. Updates also lose Kept's permission to paste: in System Settings › Privacy & Security › Accessibility, remove Kept with − and add it back with +.
+          EOF
+            fi
+            echo
+            echo "SHA-256 of \`Kept-$VERSION.dmg\`: \`$SHA256\`"
+            echo
+          } > "$notes"
+
+          # A draft left by an earlier run of the old workflow: start over.
+          if draft="$(gh release view "$tag" --json isDraft --jq .isDraft 2> /dev/null)"; then
             if [[ "$draft" != "true" ]]; then
-              echo "::error::Release $TAG is already published; not changing it."
+              echo "::error::Kept $VERSION is already released; not changing it."
               exit 1
             fi
-            echo "Replacing the files on the draft release $TAG"
-            gh release upload "$TAG" "${files[@]}" --clobber
-          else
-            gh release create "$TAG" "${files[@]}" --draft --verify-tag \
-              --title "Kept $VERSION" --generate-notes
+            echo "Removing the draft release $tag"
+            gh release delete "$tag" --yes
           fi
+
+          # Creates the tag at this commit when it doesn't exist yet (a run
+          # from master). A tag made with this token doesn't start another run.
+          gh release create "$tag" "$dmg" --target "$COMMIT" \
+            --title "Kept $VERSION" --notes-file "$notes" --generate-notes --latest
+          gh release view "$tag" --json url --jq .url

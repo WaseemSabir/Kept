@@ -92,10 +92,10 @@ Tests/
   KeptTests/                  macOS-only tests for app-layer logic that can't live in core
 Resources/                    Info.plist, Kept.entitlements, AppIcon assets (copied by the bundle script)
 scripts/                      build-app.sh (assembles + signs Kept.app from `swift build` output),
-                              package.sh (release zip, disk image, notarization), make-icon.py
+                              package.sh (release disk image, notarization), make-icon.py
 Makefile                      build / test / app / run / release / clean
 .github/workflows/            ci.yml (macOS: build, test, snapshots, bundle, launch · Linux: core
-                              tests), release.yml (tagged releases)
+                              tests), release.yml (published releases)
 ```
 
 Resources are **not** SwiftPM `resources:`; the bundle script copies them into
