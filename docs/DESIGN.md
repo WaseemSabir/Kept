@@ -447,3 +447,178 @@ title bar, 380 pt wide, everything centered like a modern alert:
 - Errors say what happened and what to do: "Kept needs Accessibility access
   to paste for you. Open System Settings → Privacy & Security →
   Accessibility and turn on Kept."
+
+## Website
+
+The product site lives in `site/` (static HTML built with Astro, hosted on
+Vercel). It is the app's page on the web, so everything above applies: one
+mark, the system font, one left edge, quiet motion, the same writing. This
+section holds what the web needs that the app gets from macOS.
+
+### Brief
+
+- **Subject:** what Kept is, how it works, how to get it.
+- **Audience:** someone on a Mac deciding whether to install a clipboard
+  manager, and the search engines and AI assistants they ask.
+- **Primary job:** understand Kept in ten seconds, try it, download it.
+
+### Color
+
+A web page has no vibrancy to sit on, so the site names the neutrals the app
+borrows from the system. They come from the icon: paper and graphite. The
+marker tokens (`marker`, `markedInk`, `markedInkMuted`, `markerInk`,
+`markerNotch`) are the app's, unchanged.
+
+| Token      | Light                   | Dark                    | Role |
+|------------|-------------------------|-------------------------|------|
+| `page`     | `#F6F6F4`               | `#17181C`               | Page background |
+| `surface`  | `#FFFFFF`               | `#202227`               | The panel |
+| `ink`      | `#1C1C1E`               | `#ECECE8`               | Text |
+| `inkMuted` | `#636366`               | `#A1A1A6`               | Fact labels, notes, captions |
+| `inkFaint` | `#8E8E93`               | `#6C6C70`               | Quick-paste numbers, placeholders; never the only carrier of meaning |
+| `hairline` | black @ 10%             | white @ 12%             | Section rules, the panel's dividers |
+| `wash`     | black @ 5%              | white @ 8%              | Key caps, code |
+| `button`   | `#202227`, text `#FFFFFF` | `#E4E4E0`, text `#202227` | The download button: graphite or paper, never the marker |
+
+The site follows the system's light or dark setting and has no switch of its
+own. `ink` on `page` is ≈15:1 in both; `inkMuted` clears 4.5:1 on `page` and
+on `surface`.
+
+**Where the marker goes.** It still means "this is selected": the selected
+row and the active filter in the live panel, the current page in the header
+(the active filter's small mark), and a text link under the pointer or the
+keyboard. Drawn as in the app: behind the text, a little past both ends,
+with the chisel slant (about 16° off vertical), never a solid control fill.
+Keyboard focus on anything that isn't a text link is a 2 px `ink` outline,
+2 px away: yellow on white can't reach 3:1.
+
+### Type
+
+The system font here too (`-apple-system, BlinkMacSystemFont, system-ui,
+"Segoe UI", Roboto, sans-serif`; code in `ui-monospace, "SF Mono", Menlo,
+Consolas, monospace`). Everyone who can install Kept is reading on a Mac, so
+the page is set in the same face as the app, loads no font files and asks no
+third party for one.
+
+| Style     | Spec                                                        | Use |
+|-----------|-------------------------------------------------------------|-----|
+| `display` | 40 → 64 px with the window, semibold, −0.025em, line 1.04   | The one headline |
+| `title`   | 28 px, semibold, −0.018em, line 1.15                        | Section headings |
+| `heading` | 17 px, semibold                                             | Questions, sub-heads |
+| `body`    | 17 px, regular, line 1.55                                   | Prose, fact values |
+| `label`   | 15 px, regular, inkMuted                                    | Fact labels |
+| `small`   | 14 px, regular, inkMuted, line 1.45                         | Notes, captions, footer |
+| `key`     | 12 px, medium, in a key cap (wash, hairline, 5 px corners)  | Shortcuts |
+| `code`    | 14 px mono                                                  | Commands, paths, hex values |
+
+Mono is for code-like content only, as in the app. Prose wraps at about 62
+characters. The live panel keeps the app's own sizes, 1 pt = 1 CSS px.
+
+### Layout
+
+One column, the width of the panel (720 px, plus a 24 px gutter each side),
+centered in the window the way the panel is centered on the screen. Inside
+it everything starts on the same left edge: headline, prose, the panel,
+fact labels. Sections are separated by space (96 px, 64 px on a phone) and
+one hairline; there are no cards, no icon grids and no second column of
+marketing.
+
+```
+ ▣ Kept                                        Shortcuts  Privacy  GitHub
+
+ You copied it.
+ Kept kept it.
+
+ Kept is a clipboard history for the Mac. Press ⇧⌘V in any app,
+ type a few letters, press ⏎, and what you copied an hour ago is
+ back where you were typing.
+
+ [ Download Kept ]  Version 0.1.0 for macOS 14 or later. Free.
+
+ ┌──────────────────────────────────────────────────────────────────┐
+ │ ⌕ Search                           All  Pinned  Text  Links  …   │
+ ├───────────────────────────────┬──────────────────────────────────┤
+ │ ▍1  1 Ferry Building, San F…  │                                  │
+ │  5  ▧ ▰Image 1440 × 900▰      │   the selected clip, in full     │
+ │  6  func write(_ items: [N…   │   From     Preview               │
+ ├───────────────────────────────┴──────────────────────────────────┤
+ │ ⏎ Paste   ⌥⏎ Paste as plain text   ⌘⏎ Copy   ⌘P Pin              │
+ └──────────────────────────────────────────────────────────────────┘
+ This one works. Press ⇧⌘V or click it, then ↑ ↓, type, ⏎.
+ ▍ what you paste lands on this line
+
+ ──────────────────────────────────────────────────────────────────
+ What it does
+
+ Keeps      Text, rich text, links, images, files and colors.
+ Finds      Type to search. Matching words are set in bold.
+ Pastes     ⏎ pastes into the app you were in. ⌥⏎ pastes plain text.
+ ──────────────────────────────────────────────────────────────────
+ Keys · Privacy · Screenshots · Install (numbered: it's a sequence) ·
+ Questions · Open source · Download again · footer
+```
+
+- **Fact lists.** Features and privacy are label / value lists, the
+  preview pane's fact list at reading size: a 144 px label column in
+  `inkMuted`, the value beside it in `ink`. On a phone the label sits above
+  its value. No icons, no cards.
+- **Numbers** appear only where order is real: the install steps and the
+  panel's quick-paste column.
+- **Header.** The icon and the name on the left edge; on the right, quiet
+  text links like the panel's filter tokens, the current page marked. Not
+  sticky.
+- **Screenshots** are the README's own files (`docs/images/`), so there is
+  one copy to update. They carry their window shadow; the page adds none.
+
+### The live panel
+
+The hero is the panel itself, rebuilt in HTML and working: the most
+characteristic thing Kept has is the marked line, and a keyboard-first app
+is best explained by letting someone use the keyboard.
+
+- It is drawn from this document's tokens and layout at the app's size
+  (720 × 460, 52 px search bar, 34 px rows, 30 px footer, 324 px list) and
+  filled with the snapshot history from `SampleHistory.swift`.
+- It opens with the image selected, as in the README. ↑ ↓ (and ⌃P ⌃N) move
+  the mark, typing searches and sets matches semibold, the filter tokens
+  filter, ⌘P pins, ⌘⌫ deletes while the search is empty, Esc clears the
+  search and then leaves the panel. ⏎, ⌥⏎ and ⌘⏎ do what the footer says.
+  ⇧⌘V anywhere on the page puts the keyboard in it, as it would open Kept.
+- **Pasting** closes the panel as the app does and puts the clip on the
+  line under it, the stand-in for wherever you were typing; the panel comes
+  back by itself. The demo never touches the visitor's real clipboard.
+- **What it leaves out, on purpose.** Source-app icons (they are other
+  people's artwork; the preview names the app in text instead), Tab to
+  change the filter (Tab must keep moving through the page), and ⌘1–⌘9,
+  ⌘R and ⌘E (the browser owns them). The numbers still show, and clicking
+  works everywhere.
+- Without JavaScript it is a still picture of the same state, made of
+  real text. Below 760 px it shows the list pane only and rows are tapped.
+- The only window shadow on the site is the panel's. For assistive
+  technology it is a combobox with a listbox; pastes are announced.
+
+### Motion
+
+The panel fades and scales in once (≤120 ms, 0.98 → 1) when it opens and
+after a paste, and the caret on the paste line blinks. Selection, filters
+and hover change instantly. Under Reduce Motion nothing animates.
+
+### Writing
+
+The rules above, plus the web's own traps: no label above a heading, no
+"A · B · C" strings of facts, no arrow after a link, no claim the README
+can't back. The button is "Download Kept" wherever it appears. Say what
+Kept does in the words of someone who copies and pastes; version, system
+requirements and price are a sentence, not a badge row.
+
+### Review against the defaults
+
+| Default we'd reach for                    | Decision |
+|-------------------------------------------|----------|
+| Screenshot in a browser frame as the hero | The panel itself, live: you learn Kept by pressing ↓ and ⏎. |
+| A display typeface for personality        | The system font, as in the app; the page looks like the thing it sells and loads nothing. |
+| Three-column feature cards with icons     | A fact list, the preview pane's own form. |
+| Yellow download button                    | Graphite (paper in dark mode). The marker stays a highlighter. |
+| A highlighted word in the headline        | The mark means selection, so it lives in the panel and on what you point at, not on a slogan. |
+| Fade-in on scroll for every section       | One motion: the panel opening. |
+| Light/dark switch, cookie banner, analytics | Follows the system; sets no cookies and loads nothing from third parties. |
