@@ -1,0 +1,154 @@
+---
+// The big search field and, at its end, the type filters as quiet text, the
+// active one marked. The query starts at the same x as the list's text.
+//
+// For assistive technology the field is a combobox that controls the list;
+// `aria-activedescendant` names the selected row.
+import { filters, type FilterId } from '../../data/clips';
+
+interface Props {
+  listId: string;
+  activeDescendant: string;
+  filter: FilterId;
+}
+
+const { listId, activeDescendant, filter } = Astro.props;
+---
+
+<div class="search">
+  <svg class="glyph" width="17" height="17" viewBox="0 0 17 17" aria-hidden="true" focusable="false">
+    <circle cx="7" cy="7" r="5.75"></circle>
+    <path d="M11.2 11.2 15.6 15.6"></path>
+  </svg>
+  <input
+    class="field"
+    type="text"
+    role="combobox"
+    aria-label="Search clips"
+    aria-controls={listId}
+    aria-expanded="true"
+    aria-autocomplete="list"
+    aria-activedescendant={activeDescendant}
+    placeholder="Search"
+    autocomplete="off"
+    autocapitalize="off"
+    spellcheck="false"
+    enterkeyhint="go"
+    data-panel-search
+  />
+  <div class="filters" role="group" aria-label="Show">
+    {
+      filters.map((item) => (
+        <button type="button" class="filter" aria-pressed={item.id === filter ? 'true' : 'false'} data-filter={item.id}>
+          <span class="swipe">{item.title}</span>
+        </button>
+      ))
+    }
+  </div>
+</div>
+
+<style>
+  .search {
+    display: flex;
+    align-items: center;
+    height: 52px;
+    padding: 0 12px;
+  }
+
+  /* 17 px, in the 28 px column that also holds the quick-paste numbers. */
+  .glyph {
+    flex: none;
+    width: 17px;
+    height: 17px;
+    margin-inline: 1px 10px;
+    overflow: visible;
+    fill: none;
+    stroke: var(--ink-muted);
+    stroke-width: 1.5;
+    stroke-linecap: round;
+  }
+
+  .field {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--ink);
+    font: 400 20px/1 var(--font);
+    letter-spacing: -0.01em;
+    outline: none;
+    caret-color: var(--ink);
+  }
+
+  .field::placeholder {
+    color: var(--ink-faint);
+    opacity: 1;
+  }
+
+  .filters {
+    display: flex;
+    flex: none;
+    gap: 2px;
+    margin-inline-start: 12px;
+  }
+
+  .filter {
+    appearance: none;
+    height: 24px;
+    margin: 0;
+    padding: 0 6px;
+    border: 0;
+    border-radius: 5px;
+    background: none;
+    color: var(--ink-muted);
+    font: 400 12px/1 var(--font);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .filter:hover {
+    color: var(--ink);
+  }
+
+  .filter[aria-pressed='true'] {
+    color: var(--marker-ink);
+  }
+
+  .swipe {
+    --swipe-height: 17px;
+    --swipe-lead: 4px;
+    --swipe-trail: 4px;
+  }
+
+  .filter[aria-pressed='true'] .swipe::before {
+    visibility: visible;
+  }
+
+  /* A phone has room for the field alone: the filters get a row below it that scrolls sideways. */
+  @media (max-width: 759px) {
+    .search {
+      flex-wrap: wrap;
+      height: auto;
+    }
+
+    .field {
+      height: 52px;
+    }
+
+    .filters {
+      flex-basis: calc(100% + 24px);
+      margin: -4px -12px 0;
+      padding: 0 12px 8px 22px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .filters::-webkit-scrollbar {
+      display: none;
+    }
+  }
+</style>

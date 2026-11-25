@@ -1,0 +1,78 @@
+---
+// The hero's panel with the two lines under it: a hint saying it works, and
+// the paste line, the stand-in for wherever you were typing.
+//
+// In this step nothing drives it yet. The hint stays hidden (keeping its
+// space, so nothing moves) until a script marks the document with
+// <html data-scripted>; the paste line's caret blinks only then too.
+// Hooks: [data-live-panel], [data-panel-hint], [data-paste-line],
+// [data-paste-text] (where a paste goes) and [data-paste-placeholder].
+import Key from '../Key.astro';
+import Panel from './Panel.astro';
+---
+
+<div class="live" data-live-panel>
+  <Panel />
+  <p class="hint small" data-panel-hint>
+    This one works. Press <Key keys="⇧⌘V" /> or click it, then <Key keys="↑" />&nbsp;<Key keys="↓" />, type, <Key
+      keys="⏎"
+    />.
+  </p>
+  <p class="paste-line" data-paste-line>
+    <span class="caret" aria-hidden="true"></span><span class="paste-text" data-paste-text></span><span
+      class="placeholder"
+      data-paste-placeholder>What you paste lands here.</span
+    >
+  </p>
+</div>
+
+<style>
+  .hint {
+    margin-block-start: var(--space-5);
+  }
+
+  /* Hidden, space kept, until there's a script to make the panel work. */
+  :global(html:not([data-scripted])) .hint {
+    visibility: hidden;
+  }
+
+  .paste-line {
+    display: flex;
+    align-items: center;
+    min-height: 1.55em;
+    margin-block-start: var(--space-2);
+  }
+
+  .caret {
+    flex: none;
+    width: 2px;
+    height: 1.2em;
+    border-radius: 1px;
+    background: var(--ink);
+  }
+
+  .paste-text:empty {
+    display: none;
+  }
+
+  .placeholder {
+    margin-inline-start: 2px;
+    color: var(--ink-faint);
+  }
+
+  .paste-text:not(:empty) + .placeholder {
+    display: none;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    :global(html[data-scripted]) .caret {
+      animation: blink 1.06s steps(1) infinite;
+    }
+  }
+
+  @keyframes blink {
+    50% {
+      opacity: 0;
+    }
+  }
+</style>

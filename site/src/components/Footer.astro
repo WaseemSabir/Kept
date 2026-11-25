@@ -1,0 +1,64 @@
+---
+import { licenseUrl, releasesUrl, repoUrl, roadmapUrl, securityUrl } from '../config';
+import Brand from './Brand.astro';
+
+const links = [
+  { title: 'GitHub', href: repoUrl },
+  { title: 'Releases', href: releasesUrl },
+  { title: 'Roadmap', href: roadmapUrl },
+  { title: 'License', href: licenseUrl },
+  { title: 'Security policy', href: securityUrl },
+];
+---
+
+<footer class="footer">
+  <div class="top">
+    <Brand />
+    <nav aria-label="Project">
+      <ul class="links">
+        {
+          links.map((link) => (
+            <li>
+              <a class="quiet-link" href={link.href}>
+                {link.title}
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </nav>
+  </div>
+  <div class="notes small">
+    <p>MIT license. © 2026 Kept contributors.</p>
+    <p>This site sets no cookies and loads nothing from third parties.</p>
+  </div>
+</footer>
+
+<style>
+  .footer {
+    margin-block-start: var(--section-space);
+    padding-block: var(--space-6) var(--space-8);
+    border-block-start: 1px solid var(--hairline);
+  }
+
+  .top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4) var(--space-5);
+  }
+
+  .links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-5);
+    list-style: none;
+    font-size: var(--small-size);
+    color: var(--ink-muted);
+  }
+
+  .notes {
+    margin-block-start: var(--space-5);
+  }
+</style>

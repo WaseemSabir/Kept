@@ -1,0 +1,76 @@
+---
+// A screenshot from docs/images with its caption. The PNGs are 2x and carry
+// their own window shadow in a transparent margin; the image bleeds by that
+// margin so the window's edge sits on the column's left edge. The page adds
+// no shadow of its own.
+import { Picture } from 'astro:assets';
+
+interface Props {
+  src: ImageMetadata;
+  alt: string;
+  caption: string;
+  /** The window's width in CSS px (the PNG is 2x). */
+  windowWidth: number;
+  /** The transparent margin around the window, in CSS px. */
+  inset: number;
+}
+
+const { src, alt, caption, windowWidth, inset } = Astro.props;
+
+/** The whole image at 1x, shadow margin included. */
+const shownWidth = src.width / 2;
+const shownHeight = src.height / 2;
+const scale = shownWidth / windowWidth;
+// The PNG's shadow is cut off at the edge of its margin (still ~6% black at
+// the bottom), which shows as a faint box on the page's color. Fading the
+// outer 70% of the margin hides the cut and leaves the window untouched.
+const fadeX = ((inset * 0.7) / shownWidth) * 100;
+const fadeY = ((inset * 0.7) / shownHeight) * 100;
+// Below this viewport the column is narrower than the window and the image scales with it.
+const fitsFrom = windowWidth + 48;
+const sizes = `(min-width: ${fitsFrom}px) ${shownWidth}px, calc((100vw - 48px) * ${scale.toFixed(4)})`;
+const widths = [shownWidth, Math.round(shownWidth * 1.5), src.width];
+---
+
+<figure
+  class="screenshot"
+  style={`--shown: ${shownWidth}px; --scale: ${scale}; --inset: ${inset}px; --inset-ratio: ${inset / windowWidth}; --fade-x: ${fadeX.toFixed(2)}%; --fade-y: ${fadeY.toFixed(2)}%;`}
+>
+  <Picture
+    src={src}
+    alt={alt}
+    width={shownWidth}
+    height={Math.round(shownHeight)}
+    widths={widths}
+    sizes={sizes}
+    formats={['avif', 'webp']}
+    loading="lazy"
+    decoding="async"
+    pictureAttributes={{ class: 'picture' }}
+  />
+  <figcaption class="small">{caption}</figcaption>
+</figure>
+
+<style>
+  .screenshot :global(.picture) {
+    display: block;
+  }
+
+  .screenshot :global(img) {
+    max-width: none;
+    width: min(var(--shown), 100% * var(--scale));
+    height: auto;
+    /* Percent margins are of the column's width, so the bleed scales with the image. */
+    margin: max(-1 * var(--inset), -100% * var(--inset-ratio));
+    margin-inline-end: 0;
+    mask-image:
+      linear-gradient(to right, transparent, #000 var(--fade-x), #000 calc(100% - var(--fade-x)), transparent),
+      linear-gradient(to bottom, transparent, #000 var(--fade-y), #000 calc(100% - var(--fade-y)), transparent);
+    mask-composite: intersect;
+  }
+
+  figcaption {
+    margin-block-start: var(--space-3);
+    max-width: var(--measure);
+  }
+</style>

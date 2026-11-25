@@ -1,0 +1,140 @@
+---
+// One 34 px row: the quick-paste number, the clip drawn by kind, its age.
+// The selected row (aria-selected="true") has the highlighter behind its
+// text only, never the glyph. Pinned rows carry a notch on the leading
+// edge; the first row after the pins has a hairline above it.
+//
+// Hooks for scripts: id="clip-<id>", data-clip, data-kind, data-pinned,
+// data-section-start, and .number (1–9 for the first nine rows shown).
+import { accessibleLabel, rowText, type Clip } from '../../data/clips';
+import ClipGlyph from './ClipGlyph.astro';
+
+interface Props {
+  clip: Clip;
+  /** 1–9: the row's quick-paste number (⌘1–⌘9). */
+  number?: number | undefined;
+  selected: boolean;
+  /** The first unpinned row after the pins. */
+  startsSection: boolean;
+}
+
+const { clip, number, selected, startsSection } = Astro.props;
+const { primary, secondary } = rowText(clip);
+---
+
+<li
+  class="row"
+  id={`clip-${clip.id}`}
+  role="option"
+  aria-selected={selected ? 'true' : 'false'}
+  aria-label={accessibleLabel(clip)}
+  data-clip={clip.id}
+  data-kind={clip.kind}
+  data-pinned={clip.pinned ? '' : undefined}
+  data-section-start={startsSection ? '' : undefined}
+>
+  <span class="number" aria-hidden="true">{number ?? ''}</span>
+  <span class="summary">
+    <ClipGlyph clip={clip} />
+    <span class:list={['line', 'swipe', { code: clip.code }]}>
+      <span class="text"
+        >{primary}{secondary && <span class="secondary">{secondary}</span>}</span
+      >
+    </span>
+  </span>
+  <span class="age">{clip.age}</span>
+</li>
+
+<style>
+  .row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 34px;
+    padding: 0 12px;
+    cursor: default;
+  }
+
+  /* The pin's notch: the marker at full strength, 3 × 14. */
+  .row[data-pinned]::before {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 10px;
+    width: 3px;
+    height: 14px;
+    border-radius: 1.5px;
+    background: var(--marker-notch);
+  }
+
+  /* The hairline between the pins and the rest. */
+  .row[data-section-start]::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 12px;
+    right: 12px;
+    border-top: 0.5px solid var(--hairline);
+  }
+
+  .number {
+    flex: none;
+    width: 28px;
+    font-size: 11px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-faint);
+  }
+
+  .summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .line {
+    min-width: 0;
+    font-size: 13px;
+    color: var(--ink);
+  }
+
+  /* Code, as in the app: SF Mono a point smaller, to match the text's color. */
+  .line.code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  .text {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: pre;
+  }
+
+  .secondary {
+    color: var(--ink-muted);
+  }
+
+  .age {
+    flex: none;
+    margin-inline-start: auto;
+    padding-inline-start: 12px;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-muted);
+  }
+
+  /* Selected: the highlighter behind the text, and the marked inks on it. */
+  .row[aria-selected='true'] .line {
+    color: var(--marked-ink);
+  }
+
+  .row[aria-selected='true'] .secondary {
+    color: var(--marked-ink-muted);
+  }
+
+  .row[aria-selected='true'] .swipe::before {
+    visibility: visible;
+  }
+</style>

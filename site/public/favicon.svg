@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <title>Kept</title>
+  <!--
+    Hinted twin of AppIcon.svg for 32 x 32 px (icon_32x32 and
+    icon_16x16@2x). Same drawing, snapped to whole pixels: 2 px lines,
+    a 6 px marker, body 26 px with a 1 px inner rim.
+  -->
+  <defs>
+    <path id="body" d="M11.94 3H20.06C22.63 3 23.92 3 25.08 3.38C26.97 4.09 27.91 5.03 28.62 6.92C29 8.08 29 9.37 29 11.94V20.06C29 22.63 29 23.92 28.62 25.08C27.91 26.97 26.97 27.91 25.08 28.62C23.92 29 22.63 29 20.06 29H11.94C9.37 29 8.08 29 6.92 28.62C5.03 27.91 4.09 26.97 3.38 25.08C3 23.92 3 22.63 3 20.06V11.94C3 9.37 3 8.08 3.38 6.92C4.09 5.03 5.03 4.09 6.92 3.38C8.08 3 9.37 3 11.94 3Z"/>
+    <clipPath id="inside">
+      <use href="#body"/>
+    </clipPath>
+    <linearGradient id="graphite" x1="0" y1="3" x2="0" y2="29" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#363940"/>
+      <stop offset="1" stop-color="#202227"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="3" x2="0" y2="29" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.05"/>
+    </linearGradient>
+  </defs>
+
+  <use href="#body" fill="url(#graphite)"/>
+  <use href="#body" fill="none" stroke="url(#rim)" stroke-width="2" clip-path="url(#inside)"/>
+
+  <rect x="7" y="9" width="14" height="2" rx="1" fill="#E4E4E0"/>
+  <path d="M7 13H27L25.5 19H5.5Z" fill="#FFD84D"/>
+  <rect x="7" y="15" width="15" height="2" rx="1" fill="#202227"/>
+  <rect x="7" y="21" width="11" height="2" rx="1" fill="#E4E4E0"/>
+</svg>

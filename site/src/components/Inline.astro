@@ -1,0 +1,29 @@
+---
+// Renders a string written in the inline convention of src/lib/inline.ts:
+// `code`, **strong**, [text](url) and {⌘P} key caps.
+import { parseInline } from '../lib/inline';
+import Key from './Key.astro';
+
+interface Props {
+  text: string;
+}
+
+const segments = parseInline(Astro.props.text);
+---
+
+{
+  segments.map((segment) => {
+    switch (segment.type) {
+      case 'text':
+        return segment.text;
+      case 'code':
+        return <code>{segment.text}</code>;
+      case 'strong':
+        return <strong>{segment.text}</strong>;
+      case 'key':
+        return <Key keys={segment.text} />;
+      case 'link':
+        return <a href={segment.href}>{segment.text}</a>;
+    }
+  })
+}

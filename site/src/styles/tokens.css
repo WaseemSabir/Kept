@@ -1,0 +1,117 @@
+/*
+  Design tokens, from docs/DESIGN.md › Website. The marker tokens are the
+  app's (Sources/Kept/DesignSystem/Theme.swift), unchanged. The site follows
+  the system's light or dark setting; there is no switch.
+*/
+
+:root {
+  color-scheme: light dark;
+
+  /* Neutrals: paper and graphite, from the icon. */
+  --page: #f6f6f4;
+  --surface: #ffffff;
+  --ink: #1c1c1e;
+  --ink-muted: #636366;
+  --ink-faint: #8e8e93; /* never the only carrier of meaning */
+  --hairline: rgb(0 0 0 / 0.1);
+  --wash: rgb(0 0 0 / 0.05);
+  --button: #202227;
+  --button-ink: #ffffff;
+  --button-hover: #363940; /* the icon's graphite, lit from the top */
+
+  /* The one mark. A highlighter behind text, never a control fill. */
+  --marker: rgb(255 216 77 / 0.6);
+  --marked-ink: #1c1c1e; /* text on the marker */
+  --marked-ink-muted: rgb(0 0 0 / 0.62); /* muted text on the marker */
+  --marker-ink: #6e5400; /* the active filter and the current page */
+  --marker-notch: #f5c400; /* a pin's notch, full strength */
+  /* How far the marker's top edge sits right of its bottom edge, per unit of
+     height (MarkerShape's slant: the icon's chisel tip). */
+  --marker-slant: 0.25;
+  /* The marker composited on the page color, for text links on the page:
+     their marker is drawn in three overlapping pieces, and a translucent
+     color would darken where they overlap. */
+  --marker-page: #fbe490;
+
+  /* The panel's window: 12 pt corners, a hairline edge, the system shadow. */
+  --window-radius: 12px;
+  --window-edge: rgb(0 0 0 / 0.24);
+  --window-shadow: 0 3px 10px rgb(0 0 0 / 0.1), 0 10px 26px rgb(0 0 0 / 0.16);
+
+  /* Type: the system font, as in the app. Nothing is downloaded. */
+  --font: -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --display-size: clamp(40px, 31.3px + 2.73vw, 64px); /* 40 at 320 px, 64 from 1200 px */
+  --title-size: 28px;
+  --heading-size: 17px;
+  --body-size: 17px;
+  --label-size: 15px;
+  --small-size: 14px;
+  --key-size: 12px;
+  --code-size: 14px;
+
+  /* Space. Sections are 96 px apart (64 on a phone) with one hairline. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --space-9: 96px;
+  --section-space: var(--space-9);
+  --gutter: 24px;
+  --column: 720px; /* the panel's width */
+  --measure: 34em; /* about 62 characters of body text */
+  --label-column: 144px;
+}
+
+@media (max-width: 759px) {
+  :root {
+    --section-space: var(--space-8);
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #17181c;
+    --surface: #202227;
+    --ink: #ecece8;
+    --ink-muted: #a1a1a6;
+    --ink-faint: #6c6c70;
+    --hairline: rgb(255 255 255 / 0.12);
+    --wash: rgb(255 255 255 / 0.08);
+    --button: #e4e4e0;
+    --button-ink: #202227;
+    --button-hover: #f4f4f1;
+
+    /* A real highlighter: near-opaque yellow under dark ink. */
+    --marker: rgb(242 204 71 / 0.94);
+    --marked-ink: #1c1c1e;
+    --marked-ink-muted: rgb(28 28 30 / 0.75);
+    --marker-ink: #1c1c1e;
+    --marker-notch: #e8b73a;
+    --marker-page: #e5c144;
+
+    --window-edge: rgb(255 255 255 / 0.16);
+    --window-shadow: 0 6px 18px rgb(0 0 0 / 0.3), 0 16px 48px rgb(0 0 0 / 0.45);
+  }
+}
+
+/* Increase Contrast: the stronger marker and ink. */
+@media (prefers-contrast: more) {
+  :root {
+    --marker: rgb(255 216 77 / 0.95);
+    --marker-page: #ffda55;
+    --marker-ink: #5c4600;
+  }
+}
+
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :root {
+    --marker: #ffd84d;
+    --marker-page: #ffd84d;
+    --marker-ink: #1c1c1e;
+  }
+}

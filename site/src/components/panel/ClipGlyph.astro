@@ -1,0 +1,54 @@
+---
+// What stands before a clip's text in a row: a color's 14 px swatch, an
+// image's 30 × 20 thumbnail, a file's document. Text and links have none.
+import type { Clip } from '../../data/clips';
+import FileGlyph from './FileGlyph.astro';
+import Landscape from './Landscape.astro';
+
+interface Props {
+  clip: Clip;
+}
+
+const { clip } = Astro.props;
+---
+
+{clip.kind === 'color' && <span class="swatch" style={`--swatch: ${clip.hex}`} aria-hidden="true" />}
+{
+  clip.kind === 'image' && (
+    <span class="thumbnail" aria-hidden="true">
+      <Landscape id={`thumb-${clip.id}`} fit="slice" />
+    </span>
+  )
+}
+{clip.kind === 'file' && <FileGlyph size={16} />}
+
+<style>
+  .swatch,
+  .thumbnail {
+    position: relative;
+    flex: none;
+    border-radius: 3px;
+  }
+
+  .swatch {
+    width: 14px;
+    height: 14px;
+    background: var(--swatch);
+  }
+
+  .thumbnail {
+    width: 30px;
+    height: 20px;
+    overflow: hidden;
+  }
+
+  /* Outlined, so white, black and the page's own color still show. */
+  .swatch::after,
+  .thumbnail::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 0.5px var(--hairline);
+  }
+</style>

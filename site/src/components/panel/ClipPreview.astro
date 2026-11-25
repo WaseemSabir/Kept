@@ -1,0 +1,223 @@
+---
+// The right pane for one clip: the clip in full, drawn by kind, then its
+// facts as a label / value list. The panel renders one per clip and shows
+// the selected one; the rest carry `hidden`.
+//
+// Hooks for scripts: id="preview-<id>", data-preview.
+import { folderOf, linkParts, type Clip } from '../../data/clips';
+import FileGlyph from './FileGlyph.astro';
+import Landscape from './Landscape.astro';
+
+interface Props {
+  clip: Clip;
+  hidden: boolean;
+}
+
+const { clip, hidden } = Astro.props;
+---
+
+<div class="preview" id={`preview-${clip.id}`} data-preview={clip.id} hidden={hidden}>
+  <div class:list={['content', `content-${clip.kind}`]}>
+    {
+      (clip.kind === 'text' || clip.kind === 'richText') && (
+        <p class:list={['body', { code: clip.code }]}>{clip.content}</p>
+      )
+    }
+    {
+      clip.kind === 'link' && (
+        <>
+          <p class="host">{linkParts(clip.content).host}</p>
+          <p class="body code muted">{clip.content}</p>
+        </>
+      )
+    }
+    {
+      clip.kind === 'color' && (
+        <>
+          <div class="color" style={`--swatch: ${clip.hex}`} />
+          <p class="value">{clip.hex}</p>
+          {clip.content.toUpperCase() !== clip.hex && <p class="body code muted">{clip.content}</p>}
+        </>
+      )
+    }
+    {
+      clip.kind === 'image' && (
+        <div class="image" role="img" aria-label={clip.title}>
+          <Landscape id={`preview-${clip.id}`} />
+        </div>
+      )
+    }
+    {
+      clip.kind === 'file' && (
+        <ul class="files">
+          {clip.files?.map((path) => (
+            <li class="file">
+              <FileGlyph size={32} />
+              <span class="file-text">
+                <span class="file-name">{path.split('/').pop()}</span>
+                <span class="file-folder">{folderOf(path)}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )
+    }
+  </div>
+  <dl class="facts">
+    {
+      clip.facts.map((fact) => (
+        <div class="fact">
+          <dt>{fact.label}</dt>
+          <dd>{fact.value}</dd>
+        </div>
+      ))
+    }
+  </dl>
+</div>
+
+<style>
+  .preview {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    height: 100%;
+    padding: 16px;
+  }
+
+  .preview[hidden] {
+    display: none;
+  }
+
+  .content {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* Prose in SF Pro, code in SF Mono, wrapped, line breaks kept. */
+  .body {
+    font-size: 13px;
+    line-height: 17.5px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .body.code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 18px;
+  }
+
+  .muted {
+    color: var(--ink-muted);
+  }
+
+  .host {
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 20px;
+    margin-block-end: 6px;
+  }
+
+  .color {
+    height: 120px;
+    border-radius: 8px;
+    background: var(--swatch);
+    box-shadow: inset 0 0 0 0.5px var(--hairline);
+  }
+
+  .value {
+    margin-block: 10px 4px;
+    font-family: var(--font-mono);
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  /* Fitted to the pane, centered in the space above the facts, as in the app. */
+  .content-image {
+    display: flex;
+    align-items: center;
+  }
+
+  .image {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1440 / 900;
+    max-height: 100%;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .image::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 0.5px var(--hairline);
+  }
+
+  .files {
+    display: grid;
+    gap: 10px;
+    list-style: none;
+  }
+
+  .file {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .file-text {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .file-name,
+  .file-folder {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .file-name {
+    font-size: 13px;
+  }
+
+  .file-folder {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-muted);
+  }
+
+  /* The facts: an 84 px label column, values on the labels' baseline. */
+  .facts {
+    flex: none;
+    display: grid;
+    grid-template-columns: 84px minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 5px;
+    align-items: baseline;
+  }
+
+  .fact {
+    display: contents;
+  }
+
+  dt {
+    font-size: 11px;
+    line-height: 15px;
+    color: var(--ink-muted);
+  }
+
+  dd {
+    margin: 0;
+    font-size: 12px;
+    line-height: 15px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+</style>

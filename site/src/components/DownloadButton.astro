@@ -1,0 +1,65 @@
+---
+// "Download Kept" and the one sentence beside it: version, system
+// requirement, price. Graphite (paper in dark mode), never the marker.
+import { minimumMacOS, repoUrl } from '../config';
+import { getRelease } from '../data/release';
+
+interface Props {
+  /** Adds a quiet "Source on GitHub" link after the sentence. */
+  withSource?: boolean;
+}
+
+const { withSource = false } = Astro.props;
+const release = await getRelease();
+const version = release.version ? `Version ${release.version}` : 'The latest version';
+---
+
+<div class="download">
+  <a class="button" href={release.downloadUrl} data-release-source={release.source}>Download Kept</a>
+  <p class="note small">
+    {version} for macOS {minimumMacOS.version} or later. Free and open source.
+    {
+      withSource && (
+        <>
+          {' '}
+          <a href={repoUrl}>Source on GitHub</a>
+        </>
+      )
+    }
+  </p>
+</div>
+
+<style>
+  .download {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3) var(--space-5);
+  }
+
+  .button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    height: 44px;
+    padding: 0 22px;
+    margin: 0;
+    border-radius: 10px;
+    background: var(--button);
+    color: var(--button-ink);
+    font-size: var(--label-size);
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    text-decoration: none;
+  }
+
+  .button:hover {
+    background: var(--button-hover);
+    color: var(--button-ink);
+  }
+
+  .note {
+    max-width: 30em;
+  }
+</style>

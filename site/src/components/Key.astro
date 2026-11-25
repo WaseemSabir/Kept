@@ -1,0 +1,29 @@
+---
+// A key cap for a shortcut, e.g. ⌘P. One cap per key combination, as in the app.
+interface Props {
+  keys: string;
+}
+
+const { keys } = Astro.props;
+---
+
+<kbd class="key">{keys}</kbd>
+
+<style>
+  /* Inline, not inline-block: punctuation after a cap stays on its line. */
+  .key {
+    display: inline;
+    padding: 2px 5.5px;
+    font-family: var(--font);
+    font-size: var(--key-size);
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    color: var(--ink);
+    background: var(--wash);
+    border: 0.5px solid var(--hairline);
+    border-radius: 5px;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+</style>

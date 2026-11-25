@@ -1,0 +1,180 @@
+---
+// Kept's panel, rebuilt in HTML at the app's size (1 pt = 1 CSS px): a
+// 52 px search bar, a 324 px list of 34 px rows beside the preview, a 30 px
+// footer, 720 × 460 in all. It renders the opening state, the image
+// selected, as real DOM, so without JavaScript it is a still picture made of
+// text. Below 760 px it shows the list alone.
+//
+// Hooks for scripts (none ship in this step):
+//   [data-panel]          the window; data-filter and data-selected hold the state
+//   [data-panel-search]   the search field (a combobox; aria-activedescendant)
+//   [data-filter]         the filter buttons (aria-pressed)
+//   #panel-list           the listbox; rows are #clip-<id> (aria-selected)
+//   [data-preview]        one preview per clip; all but the selected are hidden
+//   [data-panel-footer]   the key hints, [data-hint] each
+//   [data-panel-status]   a polite live region for announcements
+//   .is-opening           plays the opening motion once
+import { clips, initialSelection, type FilterId } from '../../data/clips';
+import ClipPreview from './ClipPreview.astro';
+import ClipRow from './ClipRow.astro';
+import PanelFooter from './PanelFooter.astro';
+import SearchBar from './SearchBar.astro';
+
+const filter: FilterId = 'all';
+const listId = 'panel-list';
+const pinnedCount = clips.filter((clip) => clip.pinned).length;
+---
+
+<div class="panel" role="group" aria-label="Kept" data-panel data-filter={filter} data-selected={initialSelection}>
+  <SearchBar listId={listId} activeDescendant={`clip-${initialSelection}`} filter={filter} />
+  <div class="body">
+    <ul class="list" id={listId} role="listbox" aria-label="Clips">
+      {
+        clips.map((clip, index) => (
+          <ClipRow
+            clip={clip}
+            number={index < 9 ? index + 1 : undefined}
+            selected={clip.id === initialSelection}
+            startsSection={pinnedCount > 0 && index === pinnedCount}
+          />
+        ))
+      }
+    </ul>
+    <div class="previews">
+      {clips.map((clip) => <ClipPreview clip={clip} hidden={clip.id !== initialSelection} />)}
+    </div>
+  </div>
+  <PanelFooter />
+  <p class="visually-hidden" aria-live="polite" data-panel-status></p>
+</div>
+
+<style>
+  .panel {
+    /* Colors only the panel uses: the file glyph's paper. */
+    --file-paper: #ffffff;
+    --file-fold: #ececec;
+    --file-edge: rgb(0 0 0 / 0.28);
+    --file-lines: rgb(0 0 0 / 0.16);
+
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 720px;
+    height: 460px;
+    overflow: hidden;
+    border-radius: var(--window-radius);
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow:
+      0 0 0 1px var(--window-edge),
+      var(--window-shadow);
+    font-family: var(--font);
+    font-size: 13px;
+    line-height: 1.25;
+    text-align: start;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .panel {
+      --file-paper: #45474d;
+      --file-fold: #5a5c62;
+      --file-edge: rgb(255 255 255 / 0.2);
+      --file-lines: rgb(255 255 255 / 0.22);
+    }
+  }
+
+  /* The search field has the keyboard: the window shows it, as a key window would. */
+  .panel:has([data-panel-search]:focus-visible) {
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
+  }
+
+  .body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    border-block: 0.5px solid var(--hairline);
+  }
+
+  .list {
+    flex: none;
+    width: 324px;
+    padding: 4px 0;
+    margin: 0;
+    list-style: none;
+    overflow-y: auto;
+    border-inline-end: 0.5px solid var(--hairline);
+    /* As in the app: selection drives scrolling, so no scroller takes the gutter. */
+    scrollbar-width: none;
+  }
+
+  .list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .previews {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /*
+    The highlighter: a band whose ends are both cut at the chisel slant
+    (MarkerShape), behind the text and a little past both ends. Hosts set
+    the height and how far it runs past (--swipe-*) and make it visible.
+  */
+  .panel :global(.swipe) {
+    --swipe-height: 20px;
+    --swipe-lead: 5px;
+    --swipe-trail: 9px;
+    --swipe-shift: calc(var(--swipe-height) * var(--marker-slant) / 2);
+
+    position: relative;
+    isolation: isolate;
+  }
+
+  .panel :global(.swipe)::before {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    top: 50%;
+    left: calc(var(--swipe-shift) - var(--swipe-lead));
+    right: calc(var(--swipe-shift) - var(--swipe-trail));
+    height: var(--swipe-height);
+    border-radius: 2.5px;
+    background: var(--marker);
+    transform: translateY(-50%) skewX(calc(-1 * atan(var(--marker-slant))));
+    visibility: hidden;
+  }
+
+  /* Opening: a 120 ms settle from 98%, once (DESIGN.md › Motion). */
+  @media (prefers-reduced-motion: no-preference) {
+    .panel:global(.is-opening) {
+      animation: open 120ms ease-out;
+    }
+  }
+
+  @keyframes open {
+    from {
+      opacity: 0;
+      transform: scale(0.98);
+    }
+  }
+
+  /* A phone: the list alone, rows tapped; a shorter footer. */
+  @media (max-width: 759px) {
+    .panel {
+      height: auto;
+    }
+
+    .list {
+      width: 100%;
+      height: calc(34px * 9.5 + 4px);
+      border-inline-end: 0;
+    }
+
+    .previews {
+      display: none;
+    }
+  }
+</style>

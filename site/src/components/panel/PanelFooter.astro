@@ -1,0 +1,25 @@
+---
+// Hints for what the keys do now, with a clip selected and the search
+// empty. A script changes them as the app does: "Unpin" on a pinned clip,
+// no "Delete" while searching, "esc Close" with nothing selected.
+import KeyHint from './KeyHint.astro';
+---
+
+<div class="footer" data-panel-footer>
+  <KeyHint keys="⏎" label="Paste" name="paste" />
+  <KeyHint keys="⌥⏎" label="Paste as plain text" name="paste-plain" />
+  <KeyHint keys="⌘⏎" label="Copy" name="copy" optional />
+  <KeyHint keys="⌘P" label="Pin" name="pin" optional />
+  <KeyHint keys="⌘⌫" label="Delete" name="delete" optional />
+</div>
+
+<style>
+  .footer {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    height: 30px;
+    padding: 0 12px;
+    overflow: hidden;
+  }
+</style>

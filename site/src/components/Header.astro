@@ -1,0 +1,59 @@
+---
+// The icon and name on the left edge; quiet text links on the right, like
+// the panel's filter tokens, the current page marked. Not sticky.
+import { repoUrl } from '../config';
+import Brand from './Brand.astro';
+
+interface Props {
+  current?: 'shortcuts' | 'privacy' | undefined;
+}
+
+const { current } = Astro.props;
+
+const links = [
+  { id: 'shortcuts', title: 'Shortcuts', href: '/shortcuts' },
+  { id: 'privacy', title: 'Privacy', href: '/privacy' },
+  { id: 'github', title: 'GitHub', href: repoUrl },
+] as const;
+---
+
+<header class="header">
+  <Brand />
+  <nav aria-label="Site">
+    <ul class="links">
+      {
+        links.map((link) => (
+          <li>
+            <a class="quiet-link" href={link.href} aria-current={link.id === current ? 'page' : undefined}>
+              {link.title}
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+  </nav>
+</header>
+
+<style>
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding-block: var(--space-5);
+  }
+
+  .links {
+    display: flex;
+    gap: var(--space-5);
+    list-style: none;
+    font-size: var(--label-size);
+    color: var(--ink-muted);
+  }
+
+  @media (max-width: 400px) {
+    .links {
+      gap: var(--space-4);
+    }
+  }
+</style>

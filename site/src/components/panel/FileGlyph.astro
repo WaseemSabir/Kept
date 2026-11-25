@@ -1,0 +1,47 @@
+---
+// A plain document, folded at the corner: the file glyph in rows (16 px)
+// and in the preview (32 px). Drawn here rather than borrowing Finder's
+// icons, which are Apple's artwork.
+interface Props {
+  size: 16 | 32;
+}
+
+const { size } = Astro.props;
+---
+
+<svg class="file-glyph" width={size} height={size} viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+  <path class="page" d="M3.5 1.5h6l3 3v10h-9z"></path>
+  <path class="fold" d="M9.5 1.5v3h3"></path>
+  <path class="lines" d="M5.5 8h5M5.5 10h5M5.5 12h3"></path>
+</svg>
+
+<style>
+  .file-glyph {
+    flex: none;
+    overflow: visible;
+  }
+
+  .page {
+    fill: var(--file-paper);
+    stroke: var(--file-edge);
+    stroke-width: 1px;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .fold {
+    fill: var(--file-fold);
+    stroke: var(--file-edge);
+    stroke-width: 1px;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .lines {
+    fill: none;
+    stroke: var(--file-lines);
+    stroke-width: 1px;
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+  }
+</style>

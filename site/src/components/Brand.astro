@@ -1,0 +1,53 @@
+---
+// The icon and the name, linking home. In the header and the footer.
+import { appIcon } from '../assets';
+import { name } from '../config';
+---
+
+<a class="brand" href="/">
+  <img class="icon" src={appIcon.src} width="28" height="28" alt="" />
+  <span class="name">{name}</span>
+</a>
+
+<style>
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0;
+    margin: 0;
+    font-size: var(--heading-size);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    text-decoration: none;
+    /* The mark goes behind the name, not the icon. */
+    background: none;
+  }
+
+  .icon {
+    width: 28px;
+    height: 28px;
+    /* The icon's canvas keeps the macOS margin; line its body up with the column. */
+    margin-inline-start: -3px;
+  }
+
+  .name {
+    padding: 0.05em 0.5em 0.05em 0.3em;
+    margin-inline: -0.3em -0.5em;
+    --mark-cap: calc(1.3em * var(--marker-slant));
+  }
+
+  .brand:is(:hover, :focus-visible) .name {
+    color: var(--marked-ink);
+    background-image:
+      linear-gradient(to bottom right, transparent calc(50% - 0.5px), var(--marker-page) calc(50% + 0.5px)),
+      linear-gradient(var(--marker-page), var(--marker-page)),
+      linear-gradient(to bottom right, var(--marker-page) calc(50% - 0.5px), transparent calc(50% + 0.5px));
+    background-size:
+      var(--mark-cap) 100%,
+      calc(100% - 2 * var(--mark-cap) + 1px) 100%,
+      var(--mark-cap) 100%;
+    background-position: left center, center, right center;
+    background-repeat: no-repeat;
+  }
+</style>

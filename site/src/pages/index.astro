@@ -1,0 +1,198 @@
+---
+import { panelDarkScreenshot, settingsScreenshot } from '../assets';
+import DownloadButton from '../components/DownloadButton.astro';
+import FactList from '../components/FactList.astro';
+import Inline from '../components/Inline.astro';
+import LivePanel from '../components/panel/LivePanel.astro';
+import Screenshot from '../components/Screenshot.astro';
+import ShortcutTable from '../components/ShortcutTable.astro';
+import { contributingUrl, description, homeTitle, issuesUrl, lede, repoUrl, roadmapUrl } from '../config';
+import { questions } from '../data/faq';
+import { features } from '../data/features';
+import { installNotes, installSteps, requirement } from '../data/install';
+import { privacy } from '../data/privacy';
+import { getRelease } from '../data/release';
+import { essentialShortcuts } from '../data/shortcuts';
+import Base from '../layouts/Base.astro';
+
+const release = await getRelease();
+---
+
+<Base title={homeTitle} description={description}>
+  <section class="hero" id="kept" aria-labelledby="kept-title">
+    <h1 id="kept-title">You copied it.<br />Kept kept it.</h1>
+    <p class="lede"><Inline text={lede} /></p>
+    <div class="hero-download">
+      <DownloadButton withSource />
+    </div>
+    <div class="hero-panel">
+      <LivePanel />
+    </div>
+  </section>
+
+  <section class="section" id="features" aria-labelledby="features-title">
+    <h2 id="features-title">What Kept does</h2>
+    <FactList items={features} />
+  </section>
+
+  <section class="section" id="keys" aria-labelledby="keys-title">
+    <h2 id="keys-title">Keyboard shortcuts</h2>
+    <ShortcutTable items={essentialShortcuts} caption="The shortcuts that matter most" />
+    <p><a href="/shortcuts">All shortcuts</a></p>
+  </section>
+
+  <section class="section" id="privacy" aria-labelledby="privacy-title">
+    <h2 id="privacy-title">Privacy</h2>
+    <FactList items={privacy.map(({ label, summary }) => ({ label, value: summary }))} />
+    <p><a href="/privacy">Privacy in detail</a></p>
+  </section>
+
+  <section class="section" id="screenshots" aria-labelledby="screenshots-title">
+    <h2 id="screenshots-title">Screenshots</h2>
+    <Screenshot
+      src={panelDarkScreenshot}
+      alt="The Kept panel in dark mode while searching for “pasteboard”: two matching clips, the matched word set in bold, and the selected code clip previewed in full."
+      caption="Searching, in dark mode. The matching word is set in bold, and the preview shows the whole clip."
+      windowWidth={720}
+      inset={20}
+    />
+    <Screenshot
+      src={settingsScreenshot}
+      alt="Kept’s Settings window on the General pane: open at login, show Kept in the menu bar, history size, pasting options and where the panel opens."
+      caption="Settings, on the General pane."
+      windowWidth={560}
+      inset={20}
+    />
+  </section>
+
+  <section class="section" id="install" aria-labelledby="install-title">
+    <h2 id="install-title">Install Kept</h2>
+    <p>{requirement}</p>
+    {/* role="list": Safari drops list semantics from a list with list-style: none. */}
+    <ol class="steps" role="list">
+      {
+        installSteps(release).map((step) => (
+          <li>
+            <span>
+              <Inline text={step} />
+            </span>
+          </li>
+        ))
+      }
+    </ol>
+    {
+      installNotes.map((note) => (
+        <>
+          <h3 id={note.id}>{note.title}</h3>
+          {note.paragraphs.map((paragraph) => (
+            <p>
+              <Inline text={paragraph} />
+            </p>
+          ))}
+        </>
+      ))
+    }
+  </section>
+
+  <section class="section" id="questions" aria-labelledby="questions-title">
+    <h2 id="questions-title">Questions</h2>
+    <div class="questions">
+      {
+        questions.map((item) => (
+          <div class="question" id={item.id}>
+            <h3>{item.question}</h3>
+            {item.answer.map((paragraph) => (
+              <p>
+                <Inline text={paragraph} />
+              </p>
+            ))}
+          </div>
+        ))
+      }
+    </div>
+  </section>
+
+  <section class="section" id="open-source" aria-labelledby="open-source-title">
+    <h2 id="open-source-title">Open source</h2>
+    <p>
+      Kept is free and open source under the MIT license, and all of its code is on <a href={repoUrl}>GitHub</a>.
+    </p>
+    <p>
+      It’s at 0.1, its first version. History, search, pasting, pins and Settings work, but few people have used it
+      yet: expect rough edges, and please <a href={issuesUrl}>report them</a>.
+    </p>
+    <p>
+      The <a href={roadmapUrl}>roadmap</a> says what’s done and what’s next, and the <a href={contributingUrl}
+        >contributing guide</a
+      > explains how to build and test Kept and where things go.
+    </p>
+  </section>
+
+  <section class="section" id="download" aria-labelledby="download-title">
+    <h2 id="download-title">Try Kept</h2>
+    <DownloadButton />
+  </section>
+</Base>
+
+<style>
+  .hero {
+    padding-block-start: var(--space-8);
+  }
+
+  .lede {
+    max-width: var(--measure);
+    margin-block-start: var(--space-5);
+  }
+
+  .hero-download {
+    margin-block-start: var(--space-6);
+  }
+
+  .hero-panel {
+    margin-block-start: var(--space-8);
+  }
+
+  @media (max-width: 759px) {
+    .hero {
+      padding-block-start: var(--space-6);
+    }
+
+    .hero-panel {
+      margin-block-start: var(--space-7);
+    }
+  }
+
+  /* Numbered because it's a sequence; the numbers sit in a 28 px column, like the panel's. */
+  .steps {
+    display: grid;
+    gap: var(--space-2);
+    list-style: none;
+    counter-reset: step;
+    max-width: calc(var(--measure) + 28px);
+  }
+
+  .steps li {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    counter-increment: step;
+  }
+
+  .steps li::before {
+    content: counter(step);
+    color: var(--ink-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .questions {
+    display: grid;
+    gap: var(--space-6);
+  }
+
+  .question > * + * {
+    margin-block-start: var(--space-2);
+  }
+
+  .question p {
+    max-width: var(--measure);
+  }
+</style>

@@ -1,0 +1,55 @@
+---
+// A label / value list: the panel preview's fact list at reading size. A
+// 144 px label column in inkMuted, the value beside it in ink; on a phone
+// the label sits above its value. Values use the inline convention.
+import Inline from './Inline.astro';
+
+interface Props {
+  items: { label: string; value: string }[];
+}
+
+const { items } = Astro.props;
+---
+
+<dl class="facts">
+  {
+    items.map((item) => (
+      <div class="fact">
+        <dt>{item.label}</dt>
+        <dd>
+          <Inline text={item.value} />
+        </dd>
+      </div>
+    ))
+  }
+</dl>
+
+<style>
+  .facts {
+    display: grid;
+    gap: var(--space-4);
+  }
+
+  .fact {
+    display: grid;
+    grid-template-columns: var(--label-column) minmax(0, 1fr);
+    align-items: baseline;
+  }
+
+  dt {
+    font-size: var(--label-size);
+    color: var(--ink-muted);
+    padding-inline-end: var(--space-3);
+  }
+
+  dd {
+    max-width: var(--measure);
+  }
+
+  @media (max-width: 559px) {
+    .fact {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 2px;
+    }
+  }
+</style>

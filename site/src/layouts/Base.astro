@@ -1,0 +1,50 @@
+---
+// Every page's document. Takes the page's title and description, works out
+// the canonical address from `site` in astro.config.mjs, and leaves a
+// `head` slot for what a later step adds (structured data, social cards).
+import '../styles/tokens.css';
+import '../styles/base.css';
+import Footer from '../components/Footer.astro';
+import Header from '../components/Header.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  /** The header link to mark as the current page. */
+  current?: 'shortcuts' | 'privacy';
+  /** False for pages search engines shouldn't list (the 404). */
+  indexable?: boolean;
+}
+
+const { title, description, current, indexable = true } = Astro.props;
+
+// "/shortcuts.html" or "/shortcuts/" → "/shortcuts"; the home page stays "/".
+const path = Astro.url.pathname.replace(/\.html$/, '').replace(/\/index$/, '/').replace(/(.)\/$/, '$1');
+const canonical = new URL(path, Astro.site).href;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    {indexable ? <link rel="canonical" href={canonical} /> : <meta name="robots" content="noindex" />}
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f6f6f4" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#17181c" media="(prefers-color-scheme: dark)" />
+    <slot name="head" />
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to content</a>
+    <div class="column">
+      <Header current={current} />
+      <main id="content">
+        <slot />
+      </main>
+      <Footer />
+    </div>
+  </body>
+</html>

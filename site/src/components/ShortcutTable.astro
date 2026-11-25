@@ -1,0 +1,88 @@
+---
+// Keys and what they do, as a two-column table. The keys sit in the same
+// 144 px column as fact labels, so the page keeps one left edge and one
+// second edge.
+import type { Shortcut } from '../data/shortcuts';
+import Inline from './Inline.astro';
+
+interface Props {
+  items: Shortcut[];
+  /** Read to assistive technology; shown only when `showCaption` is set. */
+  caption: string;
+  showCaption?: boolean;
+}
+
+const { items, caption, showCaption = false } = Astro.props;
+---
+
+<table class="shortcuts">
+  <caption class={showCaption ? 'caption' : 'visually-hidden'}>{caption}</caption>
+  <thead>
+    <tr>
+      <th scope="col"><span class="visually-hidden">Keys</span></th>
+      <th scope="col"><span class="visually-hidden">Action</span></th>
+    </tr>
+  </thead>
+  <tbody>
+    {
+      items.map((shortcut) => (
+        <tr>
+          <th scope="row" class="keys">
+            <Inline text={shortcut.keys} />
+          </th>
+          <td>
+            <Inline text={shortcut.action} />
+          </td>
+        </tr>
+      ))
+    }
+  </tbody>
+</table>
+
+<style>
+  /* Fixed layout: the keys column is exactly the label column, whatever it holds. */
+  .shortcuts {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    text-align: start;
+  }
+
+  thead th:first-child {
+    width: var(--label-column);
+  }
+
+  .caption {
+    text-align: start;
+    font-size: var(--label-size);
+    color: var(--ink-muted);
+    padding-block-end: var(--space-3);
+  }
+
+  th,
+  td {
+    padding: 0;
+    padding-block: 6px;
+    text-align: start;
+    vertical-align: baseline;
+    font-weight: 400;
+  }
+
+  /* The column headers are for assistive technology only. */
+  thead th {
+    padding: 0;
+  }
+
+  .keys {
+    padding-inline-end: var(--space-3);
+    font-size: var(--label-size);
+    color: var(--ink-muted);
+  }
+
+  /* A phone: a narrower keys column; long key lists wrap between caps. */
+  @media (max-width: 559px) {
+    thead th:first-child {
+      width: 112px;
+    }
+  }
+</style>

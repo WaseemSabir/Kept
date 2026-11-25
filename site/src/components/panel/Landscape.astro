@@ -1,0 +1,66 @@
+---
+// The sample image, a 1440 × 900 dusk landscape, drawn from the geometry and
+// colors of SampleHistory.landscapePNG(). CoreGraphics' y axis points up, so
+// every y here is 900 − y there.
+interface Props {
+  /** Unique per instance: the gradient's id. */
+  id: string;
+  /** "slice" crops to fill (the row's thumbnail); "meet" fits (the preview). */
+  fit?: 'slice' | 'meet';
+}
+
+const { id, fit = 'meet' } = Astro.props;
+const sky = `${id}-sky`;
+
+// Ridge points as fractions of the width and height, as in the Swift source.
+const ridge = (points: [number, number][]) =>
+  ['M0 900', ...points.map(([x, y]) => `L${+(x * 1440).toFixed(1)} ${+(900 - y * 900).toFixed(1)}`), 'L1440 900Z'].join(
+    ' ',
+  );
+const far = ridge([
+  [0, 0.42],
+  [0.18, 0.55],
+  [0.34, 0.44],
+  [0.52, 0.6],
+  [0.7, 0.43],
+  [0.86, 0.5],
+  [1, 0.4],
+]);
+const near = ridge([
+  [0, 0.26],
+  [0.22, 0.36],
+  [0.4, 0.24],
+  [0.6, 0.33],
+  [0.8, 0.22],
+  [1, 0.3],
+]);
+---
+
+<svg
+  class="landscape"
+  viewBox="0 0 1440 900"
+  preserveAspectRatio={`xMidYMid ${fit}`}
+  aria-hidden="true"
+  focusable="false"
+>
+  <defs>
+    {/* From y = 0.3 of the height (warm, at the horizon) up to the top (deep blue). */}
+    <linearGradient id={sky} x1="0" y1="630" x2="0" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F6A65B"></stop>
+      <stop offset="0.35" stop-color="#C8607A"></stop>
+      <stop offset="1" stop-color="#2B2F5C"></stop>
+    </linearGradient>
+  </defs>
+  <rect width="1440" height="900" fill={`url(#${sky})`}></rect>
+  <circle cx="967.8" cy="519" r="75" fill="#FFD84D" fill-opacity="0.9"></circle>
+  <path d={far} fill="#5A3E63"></path>
+  <path d={near} fill="#2A2140"></path>
+</svg>
+
+<style>
+  .landscape {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+</style>
