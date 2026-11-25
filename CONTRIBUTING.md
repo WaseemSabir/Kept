@@ -45,10 +45,13 @@ CI uploads the same images as the `panel-snapshots` artifact of each run.
   primary type per file.
 - **Design:** [DESIGN.md](docs/DESIGN.md) — tokens, layout and principles; all UI
   follows it. Copy is sentence case and active voice, and buttons name the action.
-- **Why things are the way they are:** [RESEARCH.md](docs/RESEARCH.md).
 - **What's next:** [ROADMAP.md](docs/ROADMAP.md); update it when you finish
   something.
 - **Releases:** [RELEASING.md](docs/RELEASING.md).
+- **Security:** report privacy or security issues privately per
+  [SECURITY.md](SECURITY.md).
+- **Community:** participation is governed by the
+  [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Commits
 

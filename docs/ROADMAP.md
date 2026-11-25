@@ -2,8 +2,8 @@
 
 Living checklist. Each milestone is built, tested (Linux unit tests for
 `KeptCore`, macOS CI build for the app) and committed to `master` before the
-next one starts. Scope comes from [RESEARCH.md](RESEARCH.md); look and feel
-from [DESIGN.md](DESIGN.md); structure from [ARCHITECTURE.md](ARCHITECTURE.md).
+next one starts. Look and feel come from [DESIGN.md](DESIGN.md); structure
+from [ARCHITECTURE.md](ARCHITECTURE.md).
 
 M0–M9 are the planned milestones. A1–A5 in the notes name the passes that
 built them: A1 capture and the panel, A2 pasting, A3 Settings and the menu
@@ -92,7 +92,7 @@ Notes:
 Notes:
 - Payloads over 64 KB go to `blobs/<sha256>`; smaller ones stay inline in SQLite. The per-item
   cap (20 MB) is enforced by `ClipBuilder`, which drops the heaviest non-primary
-  representations first. Pruning by total blob size (~500 MB, RESEARCH §10) isn't done yet.
+  representations first. Pruning by total blob size (~500 MB) isn't done yet.
 - New pins go to the end of the pinned section; `pinOrder` stays 0…n-1.
 - `representations(for:)` returns `[PasteboardItem]` (typed items, not tuples).
 - Also done here: `ClipSearch` (M3) and the `Preferences` model (M6), both in core.

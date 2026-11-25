@@ -1,7 +1,7 @@
 import CoreGraphics
 
-/// Posts ⌘V with `CGEvent`, the way Maccy and Clipy do (docs/RESEARCH.md
-/// §5): a combined-session event source that holds back the user's own
+/// Posts ⌘V with `CGEvent`, the way Maccy and Clipy do:
+/// a combined-session event source that holds back the user's own
 /// keys and mouse moves for the moment the shortcut is in flight, key down
 /// and up with ⌘ (and the left-⌘ device bit, as a real key press carries),
 /// posted to the session event tap.

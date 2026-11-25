@@ -1,7 +1,10 @@
 # Kept
 
-A keyboard-first clipboard history for the Mac. Native, private and open
-source.
+A keyboard-first clipboard history for the Mac. Native, private, and open source.
+
+![macOS 14+](https://img.shields.io/badge/macOS-14%2B-000000?logo=apple&logoColor=white)
+![Swift 6](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 <p align="center">
   <img src="docs/images/panel-light.png" width="720" alt="The Kept panel in light mode: a search field and type filters on top, a list of recent clips (two pinned at the top) with the selected image marked by a yellow highlighter, and a preview of that image with where it came from and when.">
@@ -12,21 +15,20 @@ source.
 > rough edges, and please [report them](https://github.com/WaseemSabir/Kept/issues).
 > The [roadmap](docs/ROADMAP.md) says what's done and what's next.
 
-## What it does
+## Features
 
-- Keeps what you copy: text, rich text, links, images, files and colors.
-- **⇧⌘V** opens a panel over whatever app you're in. Type to search, press
-  **⏎** to paste into that app, or **⌘1–⌘9** for the first nine clips.
-- **⌥⏎** pastes as plain text, **⌘⏎** only copies.
-- Pin the clips you reuse (**⌘P**). Pins stay on top and are never pruned.
-- Name a clip (**⌘R**) so it's easy to find, or fix its text (**⌘E**): pins
-  become snippets. Search finds clips by name too.
-- Each clip shows itself: a color its swatch, an image its thumbnail, a file
-  its icon, a link its host, code in monospace. Search marks the words that
-  matched.
-- Lives in the menu bar, or out of sight: everything works from the keyboard.
-- Native Swift, AppKit and SwiftUI, in light and dark, with VoiceOver, Reduce
-  Motion, Reduce Transparency and Increase Contrast respected.
+- **Keeps what you copy:** text, rich text, links, images, files, and colors.
+- **Fast from the keyboard:** `⇧⌘V` opens the panel over your active app. Type
+  to search, press `⏎` to paste, or `⌘1`–`⌘9` for the first nine clips.
+- **Flexible pasting:** `⌥⏎` pastes as plain text; `⌘⏎` copies without pasting.
+- **Pins & snippets:** Pin clips you reuse (`⌘P`) so they stay on top and are
+  never pruned. Rename a clip (`⌘R`) or edit its text (`⌘E`) — search matches
+  clip names too.
+- **Content-aware rows:** Colors show a swatch, images a thumbnail, files an
+  icon, links their host, and code in monospace. Search highlights matched words.
+- **Native Mac app:** Built with Swift, AppKit, and SwiftUI in light and dark
+  mode, respecting VoiceOver, Reduce Motion, Reduce Transparency, and Increase
+  Contrast. Lives in the menu bar or runs completely out of sight.
 
 <p align="center">
   <img src="docs/images/panel-dark.png" width="720" alt="The Kept panel in dark mode while searching for “pasteboard”: two matching clips, the matched word set in bold, and the selected code clip previewed in full.">
@@ -34,35 +36,35 @@ source.
 
 ## Keyboard shortcuts
 
-Anywhere (change them in Settings › Shortcuts):
+**Global** (customizable in Settings › Shortcuts):
 
 | Keys | Action |
 |---|---|
-| ⇧⌘V | Open or close Kept |
-| none by default | Paste the clipboard as plain text |
-| none by default | Pause or resume capture |
+| `⇧⌘V` | Open or close Kept |
+| *(none by default)* | Paste the clipboard as plain text |
+| *(none by default)* | Pause or resume capture |
 
-In the panel (the search field always has the keyboard):
+**In the panel** (the search field always has focus):
 
 | Keys | Action |
 |---|---|
-| type | Search |
-| ↑ ↓ · ⌃P ⌃N | Move the selection |
-| ⌘↑ ⌘↓ · Home End · PgUp PgDn | First, last, a page at a time |
-| ⏎ · ⌥⏎ · ⌘⏎ | Paste · paste as plain text · copy only |
-| ⌘1–⌘9 · ⌥⌘1–⌥⌘9 | Paste clip 1–9 · as plain text |
-| ⌘P | Pin or unpin |
-| ⌘R | Rename the selected clip (⏎ saves, Esc cancels) |
-| ⌘E | Edit the selected clip's text (⌘S saves, Esc cancels) |
-| ⌥⌘↑ ⌥⌘↓ | Move a pin up or down (or drag it) |
-| ⌘⌫ | Delete the selected clip (with an empty search) |
-| ⌥⌘⌫, then ⌥⌘⌫ again | Clear every unpinned clip |
-| Tab ⇧Tab | Next or previous type filter |
-| ⌃U · Esc | Clear the search · clear it, then close |
-| ⌘, | Settings |
+| *type* | Search |
+| `↑` `↓` · `⌃P` `⌃N` | Move selection |
+| `⌘↑` `⌘↓` · `Home` `End` · `PgUp` `PgDn` | First, last, or page up/down |
+| `⏎` · `⌥⏎` · `⌘⏎` | Paste · paste as plain text · copy only |
+| `⌘1`–`⌘9` · `⌥⌘1`–`⌥⌘9` | Paste clip 1–9 · as plain text |
+| `⌘P` | Pin or unpin |
+| `⌘R` | Rename selected clip (`⏎` saves, `Esc` cancels) |
+| `⌘E` | Edit selected clip's text (`⌘S` saves, `Esc` cancels) |
+| `⌥⌘↑` `⌥⌘↓` | Reorder pinned clip (or drag it) |
+| `⌘⌫` | Delete selected clip (when search is empty) |
+| `⌥⌘⌫`, then `⌥⌘⌫` | Clear all unpinned clips |
+| `Tab` / `⇧Tab` | Next or previous type filter |
+| `⌃U` · `Esc` | Clear search · clear search, then close |
+| `⌘,` | Open Settings |
 
-With "Always paste as plain text" on, ⏎ and ⌥⏎ swap. Right-click a clip for
-the same actions.
+With **Always paste as plain text** enabled, `⏎` and `⌥⏎` swap. Right-click any
+clip for the same actions.
 
 ## Install
 
@@ -88,7 +90,7 @@ yourself. Releases without a Developer ID signature lose this permission
 with each update: remove Kept from the list and add it again.
 [RELEASING.md](docs/RELEASING.md) has the details.
 
-## Privacy
+## Privacy & security
 
 - **Stays on your Mac.** The history lives in Kept's sandbox container
   (`~/Library/Containers/app.kept.Kept`), readable only by you. Kept has no
@@ -104,8 +106,10 @@ with each update: remove Kept from the list and add it again.
 - **Forgets on a schedule, if you like.** Settings › Privacy › "Forget
   unpinned clips" deletes clips you haven't copied or pasted for a day, a
   week or a month. Pinned clips always stay.
-- From macOS 15.4, macOS can ask before an app reads the clipboard. If it's
-  set to ask or deny for Kept, Kept says so and where to allow it.
+- **macOS 15.4+ clipboard access:** If macOS is set to ask or deny clipboard
+  reads for Kept, Kept detects this and shows where to allow it.
+
+To report a privacy or security issue, please see [SECURITY.md](SECURITY.md).
 
 <p align="center">
   <img src="docs/images/settings.png" width="560" alt="Kept's Settings window on the General pane: open at login, show Kept in the menu bar, history size, pasting options and where the panel opens.">
@@ -132,10 +136,11 @@ or reset it with `tccutil reset Accessibility app.kept.Kept`.
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) and [CLAUDE.md](CLAUDE.md) for the
-ground rules, then [ARCHITECTURE.md](docs/ARCHITECTURE.md),
-[DESIGN.md](docs/DESIGN.md) and [RESEARCH.md](docs/RESEARCH.md).
-[RELEASING.md](docs/RELEASING.md) covers signing and cutting a release.
+Contributions are welcome! Read [CONTRIBUTING.md](CONTRIBUTING.md) and
+[CLAUDE.md](CLAUDE.md) for the ground rules, then check
+[ARCHITECTURE.md](docs/ARCHITECTURE.md), [DESIGN.md](docs/DESIGN.md), and
+[RELEASING.md](docs/RELEASING.md). All participation is governed by the
+[Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 

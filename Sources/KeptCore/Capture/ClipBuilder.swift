@@ -144,7 +144,7 @@ public struct ClipBuilder: Sendable {
     }
 
     /// Files first, then a visible string, then images, then a URL, then
-    /// text extracted from HTML or RTF (RESEARCH §1). A URL loses to an
+    /// text extracted from HTML or RTF. A URL loses to an
     /// image because browsers put the image's address next to its pixels.
     private func primaryContent(of items: [PasteboardItem]) -> PrimaryContent? {
         let fileURLs = items.flatMap { item in

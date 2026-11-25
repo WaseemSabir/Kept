@@ -1,7 +1,6 @@
 # Releasing Kept
 
-How to version, package, sign, notarize and publish Kept. Background and
-sources: [RESEARCH.md §11](RESEARCH.md#11-building-the-app-from-swiftpm-signing-and-notarization).
+How to version, package, sign, notarize and publish Kept.
 
 ## The pieces
 

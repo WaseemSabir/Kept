@@ -6,7 +6,7 @@ import CoreGraphics
 /// PostEvent (unlike full Accessibility, `AXIsProcessTrusted`) works in the
 /// App Sandbox. Up to macOS 26, System Settings lists it under Privacy &
 /// Security › Accessibility. macOS 27 renamed that pane and 27.3 splits it,
-/// and which part PostEvent lands in isn't confirmed (docs/RESEARCH.md §5),
+/// and which part PostEvent lands in isn't confirmed,
 /// so the Accessibility anchor is tried first and Privacy & Security itself
 /// is the fallback.
 @MainActor

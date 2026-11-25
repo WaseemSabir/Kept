@@ -6,7 +6,6 @@ SwiftUI, macOS 14+). Read these before changing code:
 - `docs/ROADMAP.md` — what's done and what's next (update it when you finish something)
 - `docs/ARCHITECTURE.md` — package layout, key types, data flow, conventions
 - `docs/DESIGN.md` — tokens, layout, principles; all UI must follow it
-- `docs/RESEARCH.md` — feature rationale, shortcut map, macOS API notes and gotchas
 
 ## Commands
 

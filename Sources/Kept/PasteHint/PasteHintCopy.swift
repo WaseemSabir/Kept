@@ -3,7 +3,7 @@
 /// Up to macOS 26 the PostEvent permission is listed under Privacy &
 /// Security › Accessibility, so the hint names it. macOS 27 renamed that
 /// pane ("Device Control and Data Access") and 27.3 splits it again, and
-/// which part lists PostEvent isn't confirmed (docs/RESEARCH.md §5), so
+/// which part lists PostEvent isn't confirmed, so
 /// there the hint names only Privacy & Security, which is right either way.
 enum PasteHintCopy {
     static let title = "Copied. Press ⌘V to paste."

@@ -1,8 +1,7 @@
 # Kept — Design
 
-This is the design plan for Kept. It follows the two-pass process from the
-frontend-design guidance: first a compact token system, then a review against
-the generic defaults, then the build. Anything visual in the app should trace
+This is the design specification for Kept: its token system, layout,
+interactions, and visual principles. Anything visual in the app should trace
 back to a decision here.
 
 ## Brief
@@ -238,7 +237,6 @@ bottom of the active screen for the global shortcut):
 
 ## Keys
 
-The full shortcut map lives in [RESEARCH.md](RESEARCH.md#keyboard-shortcut-map).
 The search field always has focus, so plain letters and ⌫ edit the query;
 every list action uses a modifier (⌘⌫ deletes a clip, ⌘P pins). Keys
 that destroy something never share a habit with typing or pasting: ⌘⌫
