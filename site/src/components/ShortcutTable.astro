@@ -1,7 +1,9 @@
 ---
 // Keys and what they do, as a two-column table. The keys sit in the same
 // 144 px column as fact labels, so the page keeps one left edge and one
-// second edge.
+// second edge. A key list breaks only at its plain spaces (before "or" and
+// "then", per src/data/shortcuts.ts): each run between them is one
+// unbreakable group, since browsers may otherwise break beside a key cap.
 import type { Shortcut } from '../data/shortcuts';
 import Inline from './Inline.astro';
 
@@ -28,7 +30,14 @@ const { items, caption, showCaption = false } = Astro.props;
       items.map((shortcut) => (
         <tr>
           <th scope="row" class="keys">
-            <Inline text={shortcut.keys} />
+            {shortcut.keys.split(' ').map((group, index) => (
+              <>
+                {index > 0 && ' '}
+                <span class="group">
+                  <Inline text={group} />
+                </span>
+              </>
+            ))}
           </th>
           <td>
             <Inline text={shortcut.action} />
@@ -79,10 +88,22 @@ const { items, caption, showCaption = false } = Astro.props;
     color: var(--ink-muted);
   }
 
-  /* A phone: a narrower keys column; long key lists wrap between caps. */
+  .group {
+    white-space: nowrap;
+  }
+
+  /*
+    A phone: a narrower keys column, just wide enough for "None by default"
+    and the longest group, and a tighter gap; "↑ ↓ or ⌃P ⌃N" goes on two
+    lines, breaking before "or".
+  */
   @media (max-width: 559px) {
     thead th:first-child {
-      width: 112px;
+      width: 120px;
+    }
+
+    .keys {
+      padding-inline-end: var(--space-2);
     }
   }
 </style>

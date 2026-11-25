@@ -33,6 +33,8 @@ export interface Clip {
   age: string;
   /** The preview's "Copied" fact: "26 minutes ago". */
   copied: string;
+  /** How long ago it was last copied, as in SampleHistory.swift: search ranks equal matches newest first. */
+  minutesAgo: number;
   pinned: boolean;
   /** Times copied; more than one shows as a fact. */
   copies: number;
@@ -69,7 +71,7 @@ export const initialSelection = 'landscape';
 
 // MARK: Samples
 
-type Sample = Pick<Clip, 'id' | 'source' | 'age' | 'copied'> & {
+type Sample = Pick<Clip, 'id' | 'source' | 'age' | 'copied' | 'minutesAgo'> & {
   copies?: number;
   pinned?: boolean;
   name?: string;
@@ -90,6 +92,7 @@ const samples: Sample[] = [
     source: 'Maps',
     age: 'Nov 10',
     copied: 'Nov 10 at 2:14 AM',
+    minutesAgo: 60 * 24 * 9,
     copies: 6,
     pinned: true,
   },
@@ -100,6 +103,7 @@ const samples: Sample[] = [
     source: 'Mail',
     age: 'Mon',
     copied: 'Monday at 2:14 AM',
+    minutesAgo: 60 * 24 * 3,
     copies: 14,
     pinned: true,
     name: 'Support reply',
@@ -114,6 +118,7 @@ const samples: Sample[] = [
     source: 'Mail',
     age: '2m',
     copied: '2 minutes ago',
+    minutesAgo: 2,
   },
   {
     id: 'changecount',
@@ -122,6 +127,7 @@ const samples: Sample[] = [
     source: 'Safari',
     age: '9m',
     copied: '9 minutes ago',
+    minutesAgo: 9,
     copies: 2,
   },
   {
@@ -134,6 +140,7 @@ const samples: Sample[] = [
     source: 'Preview',
     age: '26m',
     copied: '26 minutes ago',
+    minutesAgo: 26,
   },
   {
     id: 'write-items',
@@ -149,6 +156,7 @@ const samples: Sample[] = [
     source: 'Xcode',
     age: '1h',
     copied: 'Today at 1:10 AM',
+    minutesAgo: 64,
   },
   {
     id: 'orange',
@@ -158,6 +166,7 @@ const samples: Sample[] = [
     source: 'Digital Color Meter',
     age: '2h',
     copied: 'Today at 12:03 AM',
+    minutesAgo: 131,
   },
   {
     id: 'invoices',
@@ -170,6 +179,7 @@ const samples: Sample[] = [
     source: 'Finder',
     age: '4h',
     copied: 'Yesterday at 10:02 PM',
+    minutesAgo: 252,
   },
   {
     id: 'git-log',
@@ -178,6 +188,7 @@ const samples: Sample[] = [
     source: 'Terminal',
     age: 'Yesterday',
     copied: 'Yesterday at 4:14 AM',
+    minutesAgo: 60 * 22,
   },
   {
     id: 'framed-print',
@@ -186,6 +197,7 @@ const samples: Sample[] = [
     source: 'Notes',
     age: 'Tue',
     copied: 'Tuesday at 11:14 PM',
+    minutesAgo: 60 * 27,
   },
   {
     id: 'keyboardshortcuts',
@@ -194,6 +206,7 @@ const samples: Sample[] = [
     source: 'Safari',
     age: 'Tue',
     copied: 'Tuesday at 1:34 AM',
+    minutesAgo: 60 * 24 * 2 + 40,
   },
   {
     id: 'panel-review',
@@ -202,6 +215,7 @@ const samples: Sample[] = [
     source: 'Finder',
     age: 'Sun',
     copied: 'Sunday at 2:14 AM',
+    minutesAgo: 60 * 24 * 4,
   },
   {
     id: 'invoice-json',
@@ -211,6 +225,7 @@ const samples: Sample[] = [
     source: 'Terminal',
     age: 'Fri',
     copied: 'Friday at 2:14 AM',
+    minutesAgo: 60 * 24 * 6,
   },
   {
     id: 'blue',
@@ -220,6 +235,7 @@ const samples: Sample[] = [
     source: 'Safari',
     age: 'Nov 7',
     copied: 'Nov 7 at 2:14 AM',
+    minutesAgo: 60 * 24 * 12,
   },
   {
     id: 'sam-rivera',
@@ -228,6 +244,7 @@ const samples: Sample[] = [
     source: 'Contacts',
     age: 'Oct 31',
     copied: 'Oct 31 at 2:14 AM',
+    minutesAgo: 60 * 24 * 19,
   },
 ];
 
@@ -259,6 +276,7 @@ function build(sample: Sample): Clip {
     source: sample.source,
     age: sample.age,
     copied: sample.copied,
+    minutesAgo: sample.minutesAgo,
     pinned: sample.pinned ?? false,
     copies,
     name: sample.name,

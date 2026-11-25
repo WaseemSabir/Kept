@@ -3,7 +3,8 @@
 // facts as a label / value list. The panel renders one per clip and shows
 // the selected one; the rest carry `hidden`.
 //
-// Hooks for scripts: id="preview-<id>", data-preview.
+// Hooks for scripts: id="preview-<id>", data-preview, and data-fact on each
+// value ("Copied" changes when a clip is unpinned).
 import { folderOf, linkParts, type Clip } from '../../data/clips';
 import FileGlyph from './FileGlyph.astro';
 import Landscape from './Landscape.astro';
@@ -34,7 +35,11 @@ const { clip, hidden } = Astro.props;
     {
       clip.kind === 'color' && (
         <>
-          <div class="color" style={`--swatch: ${clip.hex}`} />
+          <div class="color">
+            <svg viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+              <rect width="1" height="1" fill={clip.hex} />
+            </svg>
+          </div>
           <p class="value">{clip.hex}</p>
           {clip.content.toUpperCase() !== clip.hex && <p class="body code muted">{clip.content}</p>}
         </>
@@ -68,7 +73,7 @@ const { clip, hidden } = Astro.props;
       clip.facts.map((fact) => (
         <div class="fact">
           <dt>{fact.label}</dt>
-          <dd>{fact.value}</dd>
+          <dd data-fact={fact.label}>{fact.value}</dd>
         </div>
       ))
     }
@@ -120,9 +125,22 @@ const { clip, hidden } = Astro.props;
   }
 
   .color {
+    position: relative;
     height: 120px;
     border-radius: 8px;
-    background: var(--swatch);
+    overflow: hidden;
+  }
+
+  .color svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  .color::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
     box-shadow: inset 0 0 0 0.5px var(--hairline);
   }
 

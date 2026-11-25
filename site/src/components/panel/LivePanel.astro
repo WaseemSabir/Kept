@@ -2,32 +2,131 @@
 // The hero's panel with the two lines under it: a hint saying it works, and
 // the paste line, the stand-in for wherever you were typing.
 //
-// In this step nothing drives it yet. The hint stays hidden (keeping its
-// space, so nothing moves) until a script marks the document with
-// <html data-scripted>; the paste line's caret blinks only then too.
-// Hooks: [data-live-panel], [data-panel-hint], [data-paste-line],
-// [data-paste-text] (where a paste goes) and [data-paste-placeholder].
+// src/scripts/panel/ makes it work and marks the document with
+// <html data-scripted>. Until then the hint stays hidden (keeping its space,
+// so nothing moves) and the paste line's caret doesn't blink: without
+// JavaScript the panel is a still picture.
+//
+// Hooks: [data-live-panel]; [data-panel-hud] (the copy-only hint);
+// [data-panel-hint] and [data-panel-reset]; [data-paste-line],
+// [data-paste-text] (where a paste goes), [data-paste-placeholder] and
+// <template data-paste-image> (the picture an image pastes as);
+// [data-panel-status] (a polite live region, outside the panel so it still
+// speaks while the panel is closed).
 import Key from '../Key.astro';
+import Landscape from './Landscape.astro';
 import Panel from './Panel.astro';
 ---
 
 <div class="live" data-live-panel>
-  <Panel />
+  <div class="stage">
+    <Panel />
+    {/* "Copied. Press ⌘V to paste.": the copy-only hint, where the app puts it (PasteHintView). */}
+    <div class="hud" data-panel-hud hidden aria-hidden="true">
+      <span>Copied. Press</span><kbd class="hud-key">⌘V</kbd><span>to paste.</span>
+    </div>
+  </div>
   <p class="hint small" data-panel-hint>
-    This one works. Press <Key keys="⇧⌘V" /> or click it, then <Key keys="↑" />&nbsp;<Key keys="↓" />, type, <Key
-      keys="⏎"
-    />.
+    <span class="for-keys">
+      This one works. Press <Key keys="⇧⌘V" /> or click it, then <Key keys="↑" />&nbsp;<Key keys="↓" />, type, <Key
+        keys="⏎"
+      />.
+    </span>
+    <span class="for-touch">This one works. Tap a clip, then <strong>Paste</strong>.</span>
+    <button type="button" class="text-button reset" data-panel-reset hidden>Reset</button>
   </p>
   <p class="paste-line" data-paste-line>
-    <span class="caret" aria-hidden="true"></span><span class="paste-text" data-paste-text></span><span
+    <span class="paste-text" data-paste-text></span><span class="caret" aria-hidden="true"></span><span
       class="placeholder"
       data-paste-placeholder>What you paste lands here.</span
     >
   </p>
+  <template data-paste-image>
+    <span class="pasted-image" role="img"><Landscape id="pasted" fit="slice" /></span>
+  </template>
+  <p class="visually-hidden" aria-live="polite" data-panel-status></p>
 </div>
 
+<script>
+  import { startLivePanel } from '../../scripts/panel/main.ts';
+
+  startLivePanel();
+</script>
+
 <style>
+  .stage {
+    position: relative;
+  }
+
+  /*
+    The copy-only hint: the panel's surface, 12 px corners, its edge and
+    shadow, 12 px padding, as wide as its line, 24 px above the bottom edge
+    of where the panel was. It fades in and out in 120 ms (not at all under
+    Reduce Motion) and never takes the keyboard.
+  */
+  .hud {
+    position: absolute;
+    left: 50%;
+    bottom: 24px;
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    padding: 12px;
+    border-radius: var(--window-radius);
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow:
+      0 0 0 1px var(--window-edge),
+      var(--window-shadow);
+    font: 500 13px/16px var(--font);
+    white-space: nowrap;
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+
+  .hud[hidden] {
+    display: none;
+  }
+
+  .hud-key {
+    display: inline-block;
+    min-width: 20px;
+    height: 17px;
+    padding: 0 4px;
+    font: 500 11px/17px var(--font);
+    text-align: center;
+    color: var(--ink-muted);
+    background: var(--wash);
+    border-radius: 4px;
+    box-shadow: inset 0 0 0 0.5px var(--hairline);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .hud:global(.is-showing) {
+      animation: hud-in 120ms ease-out;
+    }
+
+    .hud:global(.is-leaving) {
+      animation: hud-out 120ms ease-in forwards;
+    }
+  }
+
+  @keyframes hud-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @keyframes hud-out {
+    to {
+      opacity: 0;
+    }
+  }
+
   .hint {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-4);
     margin-block-start: var(--space-5);
   }
 
@@ -36,23 +135,82 @@ import Panel from './Panel.astro';
     visibility: hidden;
   }
 
+  /* Said for the input in hand: keys with a pointer that hovers, taps on a touch screen. */
+  .for-touch {
+    display: none;
+  }
+
+  @media (hover: none) {
+    .for-keys {
+      display: none;
+    }
+
+    .for-touch {
+      display: inline;
+    }
+  }
+
+  /* Once something was pinned, unpinned or deleted: back to the history the page started with. */
+  .reset {
+    flex: none;
+    margin-inline-start: auto;
+  }
+
   .paste-line {
-    display: flex;
-    align-items: center;
     min-height: 1.55em;
     margin-block-start: var(--space-2);
+    overflow-wrap: anywhere;
+  }
+
+  /* A paste keeps its line breaks, as it would in a text field. */
+  .paste-text {
+    white-space: pre-wrap;
+  }
+
+  /* Code is set in mono at the code size, its lines as close as in an editor. */
+  .paste-line:has(:global(.pasted-code)) {
+    font-size: var(--code-size);
+    line-height: 1.5;
+  }
+
+  .paste-text :global(.pasted-code) {
+    font-family: var(--font-mono);
+  }
+
+  /* A link pasted with its formatting. */
+  .paste-text :global(.pasted-link) {
+    text-decoration-line: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.24em;
+    text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  }
+
+  .pasted-image {
+    position: relative;
+    display: inline-block;
+    width: 64px;
+    height: 40px;
+    vertical-align: middle;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .pasted-image::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 0.5px var(--hairline);
   }
 
   .caret {
-    flex: none;
+    display: inline-block;
     width: 2px;
     height: 1.2em;
+    margin-inline-start: 1px;
+    vertical-align: -0.24em;
     border-radius: 1px;
     background: var(--ink);
-  }
-
-  .paste-text:empty {
-    display: none;
   }
 
   .placeholder {
@@ -60,7 +218,7 @@ import Panel from './Panel.astro';
     color: var(--ink-faint);
   }
 
-  .paste-text:not(:empty) + .placeholder {
+  .paste-text:not(:empty) ~ .placeholder {
     display: none;
   }
 

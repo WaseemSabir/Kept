@@ -5,7 +5,8 @@
 // edge; the first row after the pins has a hairline above it.
 //
 // Hooks for scripts: id="clip-<id>", data-clip, data-kind, data-pinned,
-// data-section-start, and .number (1–9 for the first nine rows shown).
+// data-section-start, .number (1–9 for the first nine rows shown), .age,
+// and .text, which the script refills with the matching words in <b>.
 import { accessibleLabel, rowText, type Clip } from '../../data/clips';
 import ClipGlyph from './ClipGlyph.astro';
 
@@ -112,8 +113,14 @@ const { primary, secondary } = rowText(clip);
     white-space: pre;
   }
 
-  .secondary {
+  /* Filled in again by the script while searching, so these reach its nodes too. */
+  .text :global(.secondary) {
     color: var(--ink-muted);
+  }
+
+  /* A word that matches the search: semibold, same size and ink (MatchHighlighter). */
+  .text :global(b) {
+    font-weight: 600;
   }
 
   .age {
@@ -130,7 +137,7 @@ const { primary, secondary } = rowText(clip);
     color: var(--marked-ink);
   }
 
-  .row[aria-selected='true'] .secondary {
+  .row[aria-selected='true'] .text :global(.secondary) {
     color: var(--marked-ink-muted);
   }
 

@@ -5,15 +5,16 @@
 // selected, as real DOM, so without JavaScript it is a still picture made of
 // text. Below 760 px it shows the list alone.
 //
-// Hooks for scripts (none ship in this step):
-//   [data-panel]          the window; data-filter and data-selected hold the state
+// src/scripts/panel/ makes it work (see LivePanel.astro). Its hooks:
+//   [data-panel]          the window; data-filter and data-selected hold the state,
+//                         data-empty ("list" or "panel") says where the empty state goes
 //   [data-panel-search]   the search field (a combobox; aria-activedescendant)
 //   [data-filter]         the filter buttons (aria-pressed)
 //   #panel-list           the listbox; rows are #clip-<id> (aria-selected)
 //   [data-preview]        one preview per clip; all but the selected are hidden
+//   [data-panel-empty]    the empty state's title and hint
 //   [data-panel-footer]   the key hints, [data-hint] each
-//   [data-panel-status]   a polite live region for announcements
-//   .is-opening           plays the opening motion once
+//   .is-closing, .is-closed, .is-opening   a paste closes it and it comes back
 import { clips, initialSelection, type FilterId } from '../../data/clips';
 import ClipPreview from './ClipPreview.astro';
 import ClipRow from './ClipRow.astro';
@@ -28,7 +29,8 @@ const pinnedCount = clips.filter((clip) => clip.pinned).length;
 <div class="panel" role="group" aria-label="Kept" data-panel data-filter={filter} data-selected={initialSelection}>
   <SearchBar listId={listId} activeDescendant={`clip-${initialSelection}`} filter={filter} />
   <div class="body">
-    <ul class="list" id={listId} role="listbox" aria-label="Clips">
+    {/* tabindex -1: the combobox keeps the keyboard; Chrome would otherwise make the scrolling list a Tab stop. */}
+    <ul class="list" id={listId} role="listbox" aria-label="Clips" tabindex="-1">
       {
         clips.map((clip, index) => (
           <ClipRow
@@ -40,12 +42,15 @@ const pinnedCount = clips.filter((clip) => clip.pinned).length;
         ))
       }
     </ul>
+    <div class="empty" data-panel-empty>
+      <p class="empty-title" data-empty-title></p>
+      <p class="empty-hint" data-empty-hint></p>
+    </div>
     <div class="previews">
       {clips.map((clip) => <ClipPreview clip={clip} hidden={clip.id !== initialSelection} />)}
     </div>
   </div>
   <PanelFooter />
-  <p class="visually-hidden" aria-live="polite" data-panel-status></p>
 </div>
 
 <style>
@@ -55,6 +60,9 @@ const pinnedCount = clips.filter((clip) => clip.pinned).length;
     --file-fold: #ececec;
     --file-edge: rgb(0 0 0 / 0.28);
     --file-lines: rgb(0 0 0 / 0.16);
+    /* The key window (the keyboard is in it): a firmer edge and a deeper shadow, as macOS draws it. */
+    --key-edge: rgb(0 0 0 / 0.5);
+    --key-shadow: 0 4px 12px rgb(0 0 0 / 0.12), 0 18px 44px rgb(0 0 0 / 0.24);
 
     display: flex;
     flex-direction: column;
@@ -81,13 +89,20 @@ const pinnedCount = clips.filter((clip) => clip.pinned).length;
       --file-fold: #5a5c62;
       --file-edge: rgb(255 255 255 / 0.2);
       --file-lines: rgb(255 255 255 / 0.22);
+      --key-edge: rgb(255 255 255 / 0.42);
+      --key-shadow: 0 8px 22px rgb(0 0 0 / 0.4), 0 22px 60px rgb(0 0 0 / 0.6);
     }
   }
 
-  /* The search field has the keyboard: the window shows it, as a key window would. */
-  .panel:has([data-panel-search]:focus-visible) {
-    outline: 2px solid var(--ink);
-    outline-offset: 2px;
+  /*
+    The keyboard is in the panel: it is the key window. The field's caret
+    shows where typing goes; the window's edge and shadow firm up the way a
+    Mac's front window does. Buttons reached with Tab keep the page's ring.
+  */
+  .panel:focus-within {
+    box-shadow:
+      0 0 0 1px var(--key-edge),
+      var(--key-shadow);
   }
 
   .body {
@@ -98,12 +113,15 @@ const pinnedCount = clips.filter((clip) => clip.pinned).length;
   }
 
   .list {
+    /* Rows measure their place from here, so the list can scroll to the selection. */
+    position: relative;
     flex: none;
     width: 324px;
     padding: 4px 0;
     margin: 0;
     list-style: none;
     overflow-y: auto;
+    overscroll-behavior: contain;
     border-inline-end: 0.5px solid var(--hairline);
     /* As in the app: selection drives scrolling, so no scroller takes the gutter. */
     scrollbar-width: none;
@@ -116,6 +134,52 @@ const pinnedCount = clips.filter((clip) => clip.pinned).length;
   .previews {
     flex: 1;
     min-width: 0;
+  }
+
+  /*
+    Nothing to list: the empty state stands where the first row's text
+    would (EmptyStateView), in the list's column, or across the panel when
+    the history itself is empty.
+  */
+  .empty {
+    display: none;
+    padding: 13px 12px 0 40px;
+  }
+
+  .panel[data-empty] .list {
+    display: none;
+  }
+
+  .panel[data-empty] .empty {
+    display: block;
+  }
+
+  .panel[data-empty='list'] .empty {
+    flex: none;
+    width: 324px;
+    border-inline-end: 0.5px solid var(--hairline);
+  }
+
+  .panel[data-empty='panel'] .empty {
+    flex: 1;
+  }
+
+  .panel[data-empty='panel'] .previews {
+    display: none;
+  }
+
+  .empty-title {
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 17px;
+  }
+
+  .empty-hint {
+    max-width: 34em;
+    margin-block-start: 4px;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--ink-muted);
   }
 
   /*
@@ -147,10 +211,30 @@ const pinnedCount = clips.filter((clip) => clip.pinned).length;
     visibility: hidden;
   }
 
-  /* Opening: a 120 ms settle from 98%, once (DESIGN.md › Motion). */
+  /*
+    A paste closes the panel as the app does: a 120 ms fade, its space kept,
+    so nothing on the page moves. It comes back with the opening motion, a
+    120 ms settle from 98% (DESIGN.md › Motion). Under Reduce Motion, neither.
+  */
+  .panel:global(.is-closed) {
+    visibility: hidden;
+    opacity: 0;
+  }
+
   @media (prefers-reduced-motion: no-preference) {
+    .panel:global(.is-closing) {
+      animation: close 120ms ease-in forwards;
+      pointer-events: none;
+    }
+
     .panel:global(.is-opening) {
       animation: open 120ms ease-out;
+    }
+  }
+
+  @keyframes close {
+    to {
+      opacity: 0;
     }
   }
 
@@ -167,7 +251,8 @@ const pinnedCount = clips.filter((clip) => clip.pinned).length;
       height: auto;
     }
 
-    .list {
+    .list,
+    .panel[data-empty] .empty {
       width: 100%;
       height: calc(34px * 9.5 + 4px);
       border-inline-end: 0;

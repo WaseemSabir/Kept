@@ -6,7 +6,7 @@ import { name } from '../config';
 
 <a class="brand" href="/">
   <img class="icon" src={appIcon.src} width="28" height="28" alt="" />
-  <span class="name">{name}</span>
+  <span class="name link-mark">{name}</span>
 </a>
 
 <style>
@@ -31,23 +31,10 @@ import { name } from '../config';
     margin-inline-start: -3px;
   }
 
+  /* The marker itself is base.css's (.link-mark): it marks the name when the link is pointed at or focused. */
   .name {
     padding: 0.05em 0.5em 0.05em 0.3em;
     margin-inline: -0.3em -0.5em;
     --mark-cap: calc(1.3em * var(--marker-slant));
-  }
-
-  .brand:is(:hover, :focus-visible) .name {
-    color: var(--marked-ink);
-    background-image:
-      linear-gradient(to bottom right, transparent calc(50% - 0.5px), var(--marker-page) calc(50% + 0.5px)),
-      linear-gradient(var(--marker-page), var(--marker-page)),
-      linear-gradient(to bottom right, var(--marker-page) calc(50% - 0.5px), transparent calc(50% + 0.5px));
-    background-size:
-      var(--mark-cap) 100%,
-      calc(100% - 2 * var(--mark-cap) + 1px) 100%,
-      var(--mark-cap) 100%;
-    background-position: left center, center, right center;
-    background-repeat: no-repeat;
   }
 </style>
