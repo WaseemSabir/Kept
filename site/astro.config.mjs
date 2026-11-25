@@ -15,6 +15,9 @@ export default defineConfig({
   build: {
     // /shortcuts is written as shortcuts.html; the host serves clean URLs.
     format: 'file',
+    // Every stylesheet is a file: the Content-Security-Policy (vercel.json)
+    // allows no inline <style>, and the files are cached for good.
+    inlineStylesheets: 'never',
   },
   devToolbar: { enabled: false },
   vite: {

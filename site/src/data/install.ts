@@ -1,8 +1,8 @@
 // Installing Kept, from README.md › Install. Steps are a real sequence, so
 // they're numbered. Strings use the inline convention in src/lib/inline.ts.
 
-import { latestReleaseUrl, minimumMacOS } from '../config';
-import type { Release } from './release';
+import { latestReleaseUrl, minimumMacOS } from '../config.ts';
+import type { Release } from './release.ts';
 
 export const requirement = `Kept needs macOS ${minimumMacOS.version} ${minimumMacOS.name} or later.`;
 

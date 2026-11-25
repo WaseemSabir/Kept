@@ -1,41 +1,89 @@
 ---
-// Every page's document. Takes the page's title and description, works out
-// the canonical address from `site` in astro.config.mjs, and leaves a
-// `head` slot for what a later step adds (structured data, social cards).
+// Every page's document. Takes the page's entry from src/data/pages.ts and
+// writes the whole <head> from it: title and description, the canonical
+// address (from `site` in astro.config.mjs), the Markdown twin, the social
+// card, icons, and the page's structured data, built from the same data
+// the page renders (src/lib/structured-data.ts).
+//
+// Nothing here is inline script or style: the site's Content-Security-Policy
+// (vercel.json) allows neither. The JSON-LD <script> is data, not code.
 import '../styles/tokens.css';
 import '../styles/base.css';
 import Footer from '../components/Footer.astro';
 import Header from '../components/Header.astro';
+import { language, locale, name, pageColor } from '../config';
+import { questions } from '../data/faq';
+import type { Page } from '../data/pages';
+import { getRelease } from '../data/release';
+import { screenshotImages } from '../lib/images';
+import { homeGraph, pageGraph, serializeJsonLd, type Graph } from '../lib/structured-data';
 
 interface Props {
-  title: string;
-  description: string;
-  /** The header link to mark as the current page. */
-  current?: 'shortcuts' | 'privacy';
-  /** False for pages search engines shouldn't list (the 404). */
-  indexable?: boolean;
+  page: Page;
 }
 
-const { title, description, current, indexable = true } = Astro.props;
+const { page } = Astro.props;
+const site = Astro.site;
+if (!site) throw new Error('Base.astro needs `site` in astro.config.mjs for canonical and social links.');
 
-// "/shortcuts.html" or "/shortcuts/" → "/shortcuts"; the home page stays "/".
-const path = Astro.url.pathname.replace(/\.html$/, '').replace(/\/index$/, '/').replace(/(.)\/$/, '$1');
-const canonical = new URL(path, Astro.site).href;
+const origin = site.origin;
+const canonical = new URL(page.path, site).href;
+const markdownTwin = page.markdownPath ? new URL(page.markdownPath, site).href : undefined;
+/** The social card (public/og.png, made by scripts/make-images.mjs). */
+const socialImage = {
+  url: new URL('/og.png', site).href,
+  width: 1200,
+  height: 630,
+  alt: '“You copied it. Kept kept it.” above a strip of Kept’s clip list, with an image clip marked by the yellow highlighter.',
+};
+const current = page.id === 'shortcuts' || page.id === 'privacy' ? page.id : undefined;
+
+let graph: Graph | undefined;
+if (page.indexable && page.id === 'home') {
+  graph = homeGraph({
+    origin,
+    release: await getRelease(),
+    questions,
+    icon: { url: new URL('/icon-512.png', site).href, width: 512, height: 512 },
+    screenshots: await screenshotImages(origin),
+  });
+} else if (page.indexable) {
+  graph = pageGraph(page, origin);
+}
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang={language}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{title}</title>
-    <meta name="description" content={description} />
-    {indexable ? <link rel="canonical" href={canonical} /> : <meta name="robots" content="noindex" />}
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>{page.title}</title>
+    <meta name="description" content={page.description} />
+    {page.indexable ? <link rel="canonical" href={canonical} /> : <meta name="robots" content="noindex" />}
+    {markdownTwin && <link rel="alternate" type="text/markdown" href={markdownTwin} title={`${page.name} (Markdown)`} />}
+
     <meta name="color-scheme" content="light dark" />
-    <meta name="theme-color" content="#f6f6f4" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#17181c" media="(prefers-color-scheme: dark)" />
-    <slot name="head" />
+    <meta name="theme-color" content={pageColor.light} media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content={pageColor.dark} media="(prefers-color-scheme: dark)" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <meta property="og:site_name" content={name} />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content={locale} />
+    <meta property="og:title" content={page.title} />
+    <meta property="og:description" content={page.description} />
+    {page.indexable && <meta property="og:url" content={canonical} />}
+    <meta property="og:image" content={socialImage.url} />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content={String(socialImage.width)} />
+    <meta property="og:image:height" content={String(socialImage.height)} />
+    <meta property="og:image:alt" content={socialImage.alt} />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    {graph && <script is:inline type="application/ld+json" set:html={serializeJsonLd(graph)} />}
   </head>
   <body>
     <a class="skip-link" href="#content">Skip to content</a>

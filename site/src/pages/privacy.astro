@@ -1,21 +1,15 @@
 ---
 import FactList from '../components/FactList.astro';
-import { pageTitle, repoUrl, securityUrl } from '../config';
+import Inline from '../components/Inline.astro';
+import { privacyIntro, privacyPage, reportingSecurity, websitePrivacy } from '../data/pages';
 import { privacy } from '../data/privacy';
 import Base from '../layouts/Base.astro';
-
-const description =
-  'Kept keeps your clipboard history on your Mac: no network access, no accounts, no sync, no telemetry. ' +
-  'It skips what apps mark as secret and what password managers copy.';
 ---
 
-<Base title={pageTitle('Privacy')} description={description} current="privacy">
+<Base page={privacyPage}>
   <div class="intro">
     <h1>Privacy</h1>
-    <p>
-      What you copy is often private: messages, addresses, code, things you meant to keep to yourself. Kept keeps it
-      on your Mac and nowhere else, and leaves you in charge of what it keeps.
-    </p>
+    <p><Inline text={privacyIntro} /></p>
   </div>
 
   <section class="section" id="app" aria-labelledby="app-title">
@@ -25,26 +19,24 @@ const description =
 
   <section class="section" id="website" aria-labelledby="website-title">
     <h2 id="website-title">On this website</h2>
-    <p>
-      This site sets no cookies, runs no analytics and loads nothing from third parties: no fonts, scripts or images
-      from anyone else. Its pages are static files.
-    </p>
-    <p>
-      It’s hosted on Vercel, which, like any host, keeps logs of the requests it serves. The download button and the
-      GitHub links take you to <a href={repoUrl}>GitHub</a>, where GitHub’s own privacy terms apply.
-    </p>
+    {
+      websitePrivacy.map((paragraph) => (
+        <p>
+          <Inline text={paragraph} />
+        </p>
+      ))
+    }
   </section>
 
   <section class="section" id="security" aria-labelledby="security-title">
     <h2 id="security-title">Report a security issue</h2>
-    <p>
-      Please don’t report security or privacy issues in public GitHub issues. Report them privately instead, with
-      GitHub’s private vulnerability reporting: on the repository’s Security tab, choose Advisories, then Report a
-      vulnerability.
-    </p>
-    <p>
-      The <a href={securityUrl}>security policy</a> says which versions get fixes and what to include in a report.
-    </p>
+    {
+      reportingSecurity.map((paragraph) => (
+        <p>
+          <Inline text={paragraph} />
+        </p>
+      ))
+    }
   </section>
 </Base>
 

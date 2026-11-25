@@ -1,24 +1,25 @@
 ---
-import { panelDarkScreenshot, settingsScreenshot } from '../assets';
 import DownloadButton from '../components/DownloadButton.astro';
 import FactList from '../components/FactList.astro';
 import Inline from '../components/Inline.astro';
 import LivePanel from '../components/panel/LivePanel.astro';
 import Screenshot from '../components/Screenshot.astro';
 import ShortcutTable from '../components/ShortcutTable.astro';
-import { contributingUrl, description, homeTitle, issuesUrl, lede, repoUrl, roadmapUrl } from '../config';
+import { lede } from '../config';
 import { questions } from '../data/faq';
 import { features } from '../data/features';
 import { installNotes, installSteps, requirement } from '../data/install';
+import { home, openSource } from '../data/pages';
 import { privacy } from '../data/privacy';
 import { getRelease } from '../data/release';
+import { screenshots } from '../data/screenshots';
 import { essentialShortcuts } from '../data/shortcuts';
 import Base from '../layouts/Base.astro';
 
 const release = await getRelease();
 ---
 
-<Base title={homeTitle} description={description}>
+<Base page={home}>
   <section class="hero" id="kept" aria-labelledby="kept-title">
     <h1 id="kept-title">You copied it.<br />Kept kept it.</h1>
     <p class="lede"><Inline text={lede} /></p>
@@ -49,20 +50,17 @@ const release = await getRelease();
 
   <section class="section" id="screenshots" aria-labelledby="screenshots-title">
     <h2 id="screenshots-title">Screenshots</h2>
-    <Screenshot
-      src={panelDarkScreenshot}
-      alt="The Kept panel in dark mode while searching for “pasteboard”: two matching clips, the matched word set in bold, and the selected code clip previewed in full."
-      caption="Searching, in dark mode. The matching word is set in bold, and the preview shows the whole clip."
-      windowWidth={720}
-      inset={20}
-    />
-    <Screenshot
-      src={settingsScreenshot}
-      alt="Kept’s Settings window on the General pane: open at login, show Kept in the menu bar, history size, pasting options and where the panel opens."
-      caption="Settings, on the General pane."
-      windowWidth={560}
-      inset={20}
-    />
+    {
+      screenshots.map((shot) => (
+        <Screenshot
+          src={shot.image}
+          alt={shot.alt}
+          caption={shot.caption}
+          windowWidth={shot.windowWidth}
+          inset={shot.inset}
+        />
+      ))
+    }
   </section>
 
   <section class="section" id="install" aria-labelledby="install-title">
@@ -114,18 +112,13 @@ const release = await getRelease();
 
   <section class="section" id="open-source" aria-labelledby="open-source-title">
     <h2 id="open-source-title">Open source</h2>
-    <p>
-      Kept is free and open source under the MIT license, and all of its code is on <a href={repoUrl}>GitHub</a>.
-    </p>
-    <p>
-      It’s at 0.1, its first version. History, search, pasting, pins and Settings work, but few people have used it
-      yet: expect rough edges, and please <a href={issuesUrl}>report them</a>.
-    </p>
-    <p>
-      The <a href={roadmapUrl}>roadmap</a> says what’s done and what’s next, and the <a href={contributingUrl}
-        >contributing guide</a
-      > explains how to build and test Kept and where things go.
-    </p>
+    {
+      openSource.map((paragraph) => (
+        <p>
+          <Inline text={paragraph} />
+        </p>
+      ))
+    }
   </section>
 
   <section class="section" id="download" aria-labelledby="download-title">

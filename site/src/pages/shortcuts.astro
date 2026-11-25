@@ -1,38 +1,27 @@
 ---
 import Inline from '../components/Inline.astro';
 import ShortcutTable from '../components/ShortcutTable.astro';
-import { pageTitle } from '../config';
+import { globalShortcutsNote, panelShortcutsNote, shortcutsIntro, shortcutsPage } from '../data/pages';
 import { globalShortcuts, panelShortcuts } from '../data/shortcuts';
 import Base from '../layouts/Base.astro';
-
-const description =
-  'Every keyboard shortcut in Kept, the clipboard history for the Mac: ⇧⌘V opens it, ⏎ pastes, ' +
-  '⌥⏎ pastes as plain text, ⌘⏎ copies, ⌘1–⌘9 paste the first nine clips and ⌘P pins.';
 ---
 
-<Base title={pageTitle('Keyboard shortcuts')} description={description} current="shortcuts">
+<Base page={shortcutsPage}>
   <div class="intro">
     <h1>Keyboard shortcuts</h1>
-    <p>
-      Kept is made to be used from the keyboard. In the panel the search field always has the keyboard, so typing
-      searches and the keys below act on the selected clip.
-    </p>
+    <p><Inline text={shortcutsIntro} /></p>
   </div>
 
   <section class="section" id="global" aria-labelledby="global-title">
     <h2 id="global-title">Global</h2>
-    <p>These work in any app. Change them in Settings › Shortcuts.</p>
+    <p><Inline text={globalShortcutsNote} /></p>
     <ShortcutTable items={globalShortcuts} caption="Global shortcuts" />
   </section>
 
   <section class="section" id="panel" aria-labelledby="panel-title">
     <h2 id="panel-title">In the panel</h2>
     <ShortcutTable items={panelShortcuts} caption="Shortcuts in the panel" />
-    <p>
-      <Inline
-        text="With **Always paste as plain text** turned on in Settings › General, {⏎} and {⌥⏎} swap. Right-click any clip for the same actions."
-      />
-    </p>
+    <p><Inline text={panelShortcutsNote} /></p>
   </section>
 </Base>
 

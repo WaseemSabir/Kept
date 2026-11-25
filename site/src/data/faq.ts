@@ -1,8 +1,8 @@
-// Questions on the home page. Plain strings, so a later step can emit the
-// same questions as structured data and Markdown: answers use only the
-// inline convention in src/lib/inline.ts ({⌘P} key caps, `code`,
-// **strong**). The first sentence of each answer answers the question on
-// its own; assistants quote it.
+// Questions on the home page. Plain strings, so the same questions are also
+// the home page's FAQPage structured data and part of its Markdown twin and
+// llms-full.txt: answers use only the inline convention in src/lib/inline.ts
+// ({⌘P} key caps, `code`, **strong**). The first sentence of each answer
+// answers the question on its own; assistants quote it.
 //
 // Every claim is backed by README.md, docs/DESIGN.md, docs/ROADMAP.md or
 // Resources/ (Info.plist, Kept.entitlements).
@@ -20,9 +20,21 @@ export const questions: Question[] = [
     id: 'what-is-kept',
     question: 'What is Kept?',
     answer: [
-      'Kept is a clipboard history for the Mac. It keeps what you copy (text, rich text, links, images, ' +
+      'Kept is a clipboard manager for the Mac. It keeps what you copy (text, rich text, links, images, ' +
         'files and colors) and brings it back when you press {⇧⌘V}, so you can find something you copied ' +
         'earlier and paste it where you’re typing without touching the mouse.',
+    ],
+  },
+  {
+    id: 'how-is-it-different',
+    question: 'How is Kept different from other clipboard managers?',
+    answer: [
+      'Kept is made for the keyboard: every action has a key, and the panel’s footer shows the ones that ' +
+        'apply. Clips sit in a dense list, not a grid of cards, so more of them fit on screen and they’re ' +
+        'quick to scan from the keyboard.',
+      'It’s a native Mac app, written in Swift with AppKit and SwiftUI. Nothing you copy leaves your Mac: ' +
+        'Kept has no network access, no account, no sync and no telemetry. And it’s free and open source ' +
+        'under the MIT license.',
     ],
   },
   {
@@ -114,6 +126,15 @@ export const questions: Question[] = [
     answer: [
       'Yes. Turn off **Show Kept in the menu bar** in Settings › General, and {⇧⌘V} still opens Kept. ' +
         'Opening Kept again from Applications brings the icon back.',
+    ],
+  },
+  {
+    id: 'uninstall',
+    question: 'How do I uninstall Kept?',
+    answer: [
+      'Quit Kept, then drag it from Applications to the Trash. To quit, right-click Kept’s icon in the menu ' +
+        'bar and choose **Quit Kept**.',
+      'Your history stays in `~/Library/Containers/app.kept.Kept`. Delete that folder too to remove it.',
     ],
   },
   {

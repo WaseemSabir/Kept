@@ -1,6 +1,6 @@
 // Copy in src/data is plain strings with a tiny Markdown subset, so the same
-// strings can be rendered as HTML here and, later, as plain text (structured
-// data) or Markdown (llms.txt):
+// strings can be rendered as HTML (Inline.astro), plain text (structured
+// data) and Markdown (the Markdown twins and llms-full.txt):
 //
 //   `code`        a command, path or value     → <code>
 //   **strong**    a button or setting's name   → <strong>
@@ -32,28 +32,52 @@ export function parseInline(source: string): Segment[] {
   return segments;
 }
 
+/**
+ * The copy joins key caps with no-break spaces so HTML wraps only where it
+ * should (src/data/shortcuts.ts). Plain text and Markdown don't wrap that
+ * way, so there they're ordinary spaces.
+ */
+const plainSpaces = (text: string): string => text.replaceAll(' ', ' ');
+
 /** The words alone: "Press ⇧⌘V in any app." */
 export function toPlainText(source: string): string {
-  return parseInline(source)
-    .map((segment) => segment.text)
-    .join('');
+  return plainSpaces(
+    parseInline(source)
+      .map((segment) => segment.text)
+      .join(''),
+  );
 }
 
-/** Markdown: key caps become code spans. */
-export function toMarkdown(source: string): string {
-  return parseInline(source)
-    .map((segment) => {
-      switch (segment.type) {
-        case 'text':
-          return segment.text;
-        case 'code':
-        case 'key':
-          return `\`${segment.text}\``;
-        case 'strong':
-          return `**${segment.text}**`;
-        case 'link':
-          return `[${segment.text}](${segment.href})`;
-      }
-    })
-    .join('');
+export interface MarkdownOptions {
+  /** Resolves links like "/shortcuts" to absolute addresses on this origin, for text read out of context. */
+  base?: string | URL;
+}
+
+/** Markdown: key caps become code spans, as in the README's tables. */
+export function toMarkdown(source: string, options: MarkdownOptions = {}): string {
+  return plainSpaces(
+    parseInline(source)
+      .map((segment) => {
+        switch (segment.type) {
+          case 'text':
+            return escapeMarkdown(segment.text);
+          case 'code':
+          case 'key':
+            return `\`${segment.text}\``;
+          case 'strong':
+            return `**${escapeMarkdown(segment.text)}**`;
+          case 'link': {
+            const relative = !/^[a-z][a-z\d+.-]*:/i.test(segment.href);
+            const href = relative && options.base ? new URL(segment.href, options.base).href : segment.href;
+            return `[${escapeMarkdown(segment.text)}](${href})`;
+          }
+        }
+      })
+      .join(''),
+  );
+}
+
+/** Backslash-escapes the characters that would start emphasis, a link or HTML in running text. */
+export function escapeMarkdown(text: string): string {
+  return text.replace(/[\\*_[\]<`]/g, '\\$&');
 }

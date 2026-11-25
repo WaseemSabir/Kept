@@ -1,9 +1,9 @@
 ---
-import { pageTitle } from '../config';
+import { notFoundPage } from '../data/pages';
 import Base from '../layouts/Base.astro';
 ---
 
-<Base title={pageTitle('Page not found')} description="This page isn’t on Kept’s website." indexable={false}>
+<Base page={notFoundPage}>
   <div class="intro">
     <h1>That page isn’t here.</h1>
     <p>It may have moved, or the address has a typo. Everything about Kept starts on the home page.</p>

@@ -213,9 +213,11 @@ import Panel from './Panel.astro';
     background: var(--ink);
   }
 
+  /* It is the only thing that says what this line is for, so it takes
+     inkMuted (4.5:1), not the placeholder's inkFaint. */
   .placeholder {
     margin-inline-start: 2px;
-    color: var(--ink-faint);
+    color: var(--ink-muted);
   }
 
   .paste-text:not(:empty) ~ .placeholder {

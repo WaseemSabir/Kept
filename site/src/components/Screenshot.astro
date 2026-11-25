@@ -3,6 +3,11 @@
 // their own window shadow in a transparent margin; the image bleeds by that
 // margin so the window's edge sits on the column's left edge. The page adds
 // no shadow of its own.
+//
+// The site's Content-Security-Policy allows no `style` attributes, so the
+// geometry can't be written per image. The image says which window it shows
+// (data-window, data-inset) and the stylesheet below turns that into custom
+// properties; everything else is worked out in CSS from the column's width.
 import { Picture } from 'astro:assets';
 
 interface Props {
@@ -17,25 +22,31 @@ interface Props {
 
 const { src, alt, caption, windowWidth, inset } = Astro.props;
 
+/** Window widths and insets with a rule in the stylesheet below. Add a rule there to add one here. */
+const styledWindows = [720, 560];
+const styledInsets = [20];
+if (!styledWindows.includes(windowWidth) || !styledInsets.includes(inset)) {
+  throw new Error(
+    `Screenshot: no rule for a ${windowWidth} px window with a ${inset} px margin; add one to Screenshot.astro's stylesheet.`,
+  );
+}
+
 /** The whole image at 1x, shadow margin included. */
 const shownWidth = src.width / 2;
 const shownHeight = src.height / 2;
+if (shownWidth !== windowWidth + 2 * inset) {
+  throw new Error(
+    `Screenshot: ${src.src} is ${shownWidth} px wide at 1x; a ${windowWidth} px window with a ${inset} px margin is ${windowWidth + 2 * inset}.`,
+  );
+}
 const scale = shownWidth / windowWidth;
-// The PNG's shadow is cut off at the edge of its margin (still ~6% black at
-// the bottom), which shows as a faint box on the page's color. Fading the
-// outer 70% of the margin hides the cut and leaves the window untouched.
-const fadeX = ((inset * 0.7) / shownWidth) * 100;
-const fadeY = ((inset * 0.7) / shownHeight) * 100;
 // Below this viewport the column is narrower than the window and the image scales with it.
 const fitsFrom = windowWidth + 48;
 const sizes = `(min-width: ${fitsFrom}px) ${shownWidth}px, calc((100vw - 48px) * ${scale.toFixed(4)})`;
 const widths = [shownWidth, Math.round(shownWidth * 1.5), src.width];
 ---
 
-<figure
-  class="screenshot"
-  style={`--shown: ${shownWidth}px; --scale: ${scale}; --inset: ${inset}px; --inset-ratio: ${inset / windowWidth}; --fade-x: ${fadeX.toFixed(2)}%; --fade-y: ${fadeY.toFixed(2)}%;`}
->
+<figure class="screenshot" data-window={windowWidth} data-inset={inset}>
   <Picture
     src={src}
     alt={alt}
@@ -52,20 +63,48 @@ const widths = [shownWidth, Math.round(shownWidth * 1.5), src.width];
 </figure>
 
 <style>
+  /* The window's width and the margin around it, as plain numbers (CSS px) for calc(). */
+  .screenshot[data-window='720'] {
+    --window: 720;
+  }
+
+  .screenshot[data-window='560'] {
+    --window: 560;
+  }
+
+  .screenshot[data-inset='20'] {
+    --inset: 20;
+  }
+
+  /* 100cqi below is the column's width. */
+  .screenshot {
+    container-type: inline-size;
+  }
+
   .screenshot :global(.picture) {
     display: block;
   }
 
   .screenshot :global(img) {
+    /* The margin as shown: all of it while the window fits the column, scaled with the window below that. */
+    --bleed: min(var(--inset) * 1px, 100cqi * var(--inset) / var(--window));
+    /*
+      The PNG's shadow is cut off at the edge of its margin (still ~6% black
+      at the bottom), which shows as a faint box on the page's color. Fading
+      the outer 70% of the margin hides the cut and leaves the window untouched.
+    */
+    --fade: calc(var(--bleed) * 0.7);
     max-width: none;
-    width: min(var(--shown), 100% * var(--scale));
+    width: min(
+      (var(--window) + 2 * var(--inset)) * 1px,
+      100cqi * (var(--window) + 2 * var(--inset)) / var(--window)
+    );
     height: auto;
-    /* Percent margins are of the column's width, so the bleed scales with the image. */
-    margin: max(-1 * var(--inset), -100% * var(--inset-ratio));
+    margin: calc(-1 * var(--bleed));
     margin-inline-end: 0;
     mask-image:
-      linear-gradient(to right, transparent, #000 var(--fade-x), #000 calc(100% - var(--fade-x)), transparent),
-      linear-gradient(to bottom, transparent, #000 var(--fade-y), #000 calc(100% - var(--fade-y)), transparent);
+      linear-gradient(to right, transparent, #000 var(--fade), #000 calc(100% - var(--fade)), transparent),
+      linear-gradient(to bottom, transparent, #000 var(--fade), #000 calc(100% - var(--fade)), transparent);
     mask-composite: intersect;
   }
 
