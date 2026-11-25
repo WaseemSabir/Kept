@@ -6,6 +6,7 @@ SwiftUI, macOS 14+). Read these before changing code:
 - `docs/ROADMAP.md` — what's done and what's next (update it when you finish something)
 - `docs/ARCHITECTURE.md` — package layout, key types, data flow, conventions
 - `docs/DESIGN.md` — tokens, layout, principles; all UI must follow it
+- `site/README.md` — the website (only when you work in `site/`)
 
 ## Commands
 
@@ -21,6 +22,14 @@ On Linux the app targets are excluded by `#if os(macOS)` in `Package.swift`, so
 only be compiled on macOS — CI (`.github/workflows/ci.yml`) is the source of
 truth for the app target.
 
+The website in `site/` is separate from the Swift package (Astro, Node 22):
+
+```sh
+cd site && npm ci
+npm run dev                    # http://localhost:4321
+npm run check && npm test && npm run build && npm run check:dist
+```
+
 ## Rules
 
 - Logic that doesn't need AppKit belongs in `KeptCore`, with Swift Testing
@@ -33,3 +42,8 @@ truth for the app target.
 - One primary type per file, folders as in ARCHITECTURE.md.
 - UI copy: sentence case, active voice, buttons name the action.
 - Never commit secrets, build products (`.build/`, `dist/`) or `.DS_Store`.
+- The website follows the "Website" section of `docs/DESIGN.md`. Its copy is
+  data in `site/src/data/`: when a shortcut, feature, privacy rule or install
+  step changes, change `README.md` and those files together. It stays static:
+  no analytics, cookies, web fonts or third-party requests, and no
+  dependencies beyond Astro and its type checker.

@@ -1,0 +1,74 @@
+name: Site
+
+# Builds and checks the product site (site/, Astro, static). Publishing it is
+# Vercel's job: its Git integration builds site/ when a push to master changes
+# it and gives pull requests a preview (site/README.md).
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "site/**"
+      - "docs/images/**"
+      - "Resources/Icon/**"
+      - "Resources/Info.plist"
+      - ".github/workflows/site.yml"
+  pull_request:
+    branches: [master]
+    paths:
+      - "site/**"
+      - "docs/images/**"
+      - "Resources/Icon/**"
+      - "Resources/Info.plist"
+      - ".github/workflows/site.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+    working-directory: site
+
+jobs:
+  build:
+    name: Build and check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: site/.nvmrc
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Type-check
+        run: npm run check
+
+      - name: Test
+        run: npm test
+
+      # The build asks GitHub for the latest release; the token keeps that
+      # working while the repository is private and under the rate limit.
+      - name: Build
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: npm run build
+
+      # Every internal link and anchor resolves, each page has its title,
+      # description, canonical and one h1, and the files crawlers and
+      # assistants look for are there.
+      - name: Check the built site
+        run: npm run check:dist

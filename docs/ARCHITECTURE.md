@@ -94,8 +94,10 @@ Resources/                    Info.plist, Kept.entitlements, AppIcon assets (cop
 scripts/                      build-app.sh (assembles + signs Kept.app from `swift build` output),
                               package.sh (release disk image, notarization), make-icon.py
 Makefile                      build / test / app / run / release / clean
+site/                         the product site: an Astro project of its own (see Website below)
 .github/workflows/            ci.yml (macOS: build, test, snapshots, bundle, launch · Linux: core
-                              tests), release.yml (published releases)
+                              tests), release.yml (published releases, then a site rebuild),
+                              site.yml (the site: type-check, tests, build, output checks)
 ```
 
 Resources are **not** SwiftPM `resources:`; the bundle script copies them into
@@ -550,6 +552,33 @@ copy made in the last half second is recorded first), rewrites each
 item's text (string, URL, RTF or HTML) as plain text with the original privacy
 markers and source, and then follows steps 4–6 with no anchor (the hint
 sits at the bottom of the active screen). Nothing textual → a beep.
+
+## Website
+
+`site/` is the product site, <https://kept.waseemsabir.com>: an Astro project
+that builds to static HTML and ships one small script. It is not part of the
+Swift package and shares no code with it. Three things it reads in place, so
+each has one copy: the screenshots in `docs/images/`, the icon in
+`Resources/Icon/` and the version in `Resources/Info.plist`.
+
+- **Copy as data.** `site/src/data/` holds what the site says (features,
+  privacy, shortcuts, questions, install steps, the demo's clips). The pages,
+  the structured data for search engines and the Markdown and `llms.txt` files
+  for AI assistants are all rendered from it. It repeats the README, so the
+  two change together.
+- **The live panel** on the home page is the panel rebuilt in HTML from
+  DESIGN.md's tokens and `SampleHistory`'s clips, driven by dependency-free
+  TypeScript in `site/src/scripts/panel/`. Its matching, highlighting and
+  ordering mirror `ClipSearch`, `MatchHighlighter` and `HistoryStore` and
+  are tested with Node's runner; a change to those rules in the app should
+  be repeated there.
+- **The download button** asks GitHub for the latest release when the site
+  builds (`site/src/data/release.ts`) and falls back to `Info.plist`.
+- **Publishing.** Vercel's Git integration builds `site/` on pushes to
+  `master` that change it (`site/vercel.json`; `site/scripts/vercel-ignore.sh`
+  decides), and gives pull requests a preview. The `Site` workflow checks the
+  same build in CI, and the release workflow's last job calls a Vercel deploy
+  hook so the button offers the new version. `site/README.md` has the setup.
 
 ## Conventions
 

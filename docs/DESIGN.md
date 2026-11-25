@@ -587,6 +587,14 @@ is best explained by letting someone use the keyboard.
 - **Pasting** closes the panel as the app does and puts the clip on the
   line under it, the stand-in for wherever you were typing; the panel comes
   back by itself. The demo never touches the visitor's real clipboard.
+  The line's "What you paste lands here." is `inkMuted`, not `inkFaint`:
+  nothing else says what the line is for.
+- **Where it differs from the app, so a demo reads.** ⌘⏎ shows the
+  copy-only hint ("Copied. Press ⌘V to paste."), and ⌘V while it shows
+  puts the clip on the line; the app copies quietly on ⌘⏎. After a paste
+  the panel keeps its search, filter and selection instead of starting
+  fresh, and the history doesn't reorder. Once someone has pinned, unpinned
+  or deleted, a quiet "Reset" appears beside the hint.
 - **What it leaves out, on purpose.** Source-app icons (they are other
   people's artwork; the preview names the app in text instead), Tab to
   change the filter (Tab must keep moving through the page), and ⌘1–⌘9,
@@ -594,8 +602,11 @@ is best explained by letting someone use the keyboard.
   works everywhere.
 - Without JavaScript it is a still picture of the same state, made of
   real text. Below 760 px it shows the list pane only and rows are tapped.
-- The only window shadow on the site is the panel's. For assistive
-  technology it is a combobox with a listbox; pastes are announced.
+- The only window shadow on the site is the panel's. With the keyboard in
+  it the panel looks like a key window (a firmer edge, a deeper shadow),
+  not a focus ring; the caret is the focus. For assistive technology it is
+  a combobox with a listbox; result counts, pastes, pins and deletes are
+  announced.
 
 ### Motion
 

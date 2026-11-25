@@ -308,3 +308,26 @@ jobs:
           gh release create "$tag" "$dmg" --target "$COMMIT" \
             --title "Kept $VERSION" --notes-file "$notes" --generate-notes --latest
           gh release view "$tag" --json url --jq .url
+
+  # The site reads the latest release while it builds (site/src/data/release.ts),
+  # so its download button offers a new version only after a new build. The
+  # hook is a Vercel Deploy Hook for master (site/README.md); without the
+  # secret the site catches up at its next deploy.
+  site:
+    name: Rebuild the site
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Trigger the Vercel deploy hook
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+        run: |
+          if [[ -z "$DEPLOY_HOOK_URL" ]]; then
+            echo "::notice::No VERCEL_DEPLOY_HOOK_URL secret: the site offers this version after its next deploy."
+            exit 0
+          fi
+          curl --fail --silent --show-error --retry 3 --max-time 30 \
+            -X POST "$DEPLOY_HOOK_URL" > /dev/null
+          echo "Asked Vercel to rebuild the site"

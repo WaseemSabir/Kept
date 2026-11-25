@@ -6,11 +6,13 @@ on:
     paths-ignore:
       - "docs/**"
       - "**.md"
+      - "site/**"
   pull_request:
     branches: [master]
     paths-ignore:
       - "docs/**"
       - "**.md"
+      - "site/**"
   workflow_dispatch:
 
 concurrency:

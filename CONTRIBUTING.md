@@ -37,6 +37,24 @@ swift build && .build/debug/Kept --render-snapshots /tmp/kept-snapshots
 
 CI uploads the same images as the `panel-snapshots` artifact of each run.
 
+## Website
+
+The product site (<https://kept.waseemsabir.com>) is the Astro project in
+[`site/`](site/README.md). It needs Node 22 and nothing from the Swift
+toolchain:
+
+```sh
+cd site && npm ci
+npm run dev                                                  # http://localhost:4321
+npm run check && npm test && npm run build && npm run check:dist
+```
+
+Its copy lives in `site/src/data/` and repeats what the README says, so a
+change to a shortcut, a feature, a privacy rule or the install steps goes in
+both. Pushes to `master` that change `site/` are published by Vercel; the
+[`Site` workflow](.github/workflows/site.yml) runs the commands above on every
+pull request that touches it.
+
 ## Where things go
 
 - **Code layout:** [ARCHITECTURE.md](docs/ARCHITECTURE.md) — packages, key types,
@@ -44,7 +62,8 @@ CI uploads the same images as the `panel-snapshots` artifact of each run.
   (Foundation-only) with Swift Testing tests; keep the app layer thin. One
   primary type per file.
 - **Design:** [DESIGN.md](docs/DESIGN.md) — tokens, layout and principles; all UI
-  follows it. Copy is sentence case and active voice, and buttons name the action.
+  follows it, the website included. Copy is sentence case and active voice, and
+  buttons name the action.
 - **What's next:** [ROADMAP.md](docs/ROADMAP.md); update it when you finish
   something.
 - **Releases:** [RELEASING.md](docs/RELEASING.md).

@@ -7,7 +7,8 @@ from [ARCHITECTURE.md](ARCHITECTURE.md).
 
 M0–M9 are the planned milestones. A1–A5 in the notes name the passes that
 built them: A1 capture and the panel, A2 pasting, A3 Settings and the menu
-bar, A4 onboarding and polish, A5 renaming, editing and forgetting.
+bar, A4 onboarding and polish, A5 renaming, editing and forgetting. W1 is
+the website.
 
 Marks: ☐ todo · ◐ in progress · ☑ done
 
@@ -35,6 +36,9 @@ Marks: ☐ todo · ◐ in progress · ☑ done
   `PanelViewModel` into extensions by concern, kept the SQLite wrapper
   internal to `KeptCore` and left the snapshot renderer out of release
   builds.
+
+- **Website:** <https://kept.waseemsabir.com>, built from `site/`: what Kept
+  does, a panel to try in the browser, shortcuts, privacy, install steps.
 
 Not in 0.1: pruning by total blob size (only the clip count and the
 per-clip cap limit the history) and everything under [Later](#later-p2-only-if-it-stays-lean).
@@ -309,6 +313,30 @@ Notes (A5):
 - Needs a hand check on a Mac: the rename field takes the keyboard with its text selected, the
   editor takes it on ⌘E, the search field gets it back after saving or cancelling, clicking
   the search field while editing saves, and VoiceOver hears the name field and the saves.
+
+## W1 — Website
+- ☑ Design: the "Website" section of DESIGN.md (paper and graphite from the icon, the system font, one column the width of the panel, fact lists, the panel live as the hero)
+- ☑ `site/`: Astro, static HTML; home, /shortcuts, /privacy and a 404; the copy as data in `site/src/data/`
+- ☑ The live panel: search with marked matches, selection, filters, paste / plain text / copy, pin, delete, touch; a still without JavaScript
+- ☑ Search engines and AI assistants: titles and descriptions, structured data, sitemap, robots.txt, llms.txt and llms-full.txt, a Markdown twin of each page, a social card, icons
+- ☑ A strict Content-Security-Policy and the other security headers (`site/vercel.json`); no cookies, analytics, web fonts or third-party requests
+- ☑ CI: `site.yml` (type-check, tests, build, checks on the built output); the app's CI skips site-only changes; Dependabot watches `site/`
+- ☐ Publishing: the Vercel project on the Git integration (Root Directory `site`), kept.waseemsabir.com, and the `VERCEL_DEPLOY_HOOK_URL` secret so a release rebuilds the site
+
+Notes (W1):
+- The site reads the screenshots, the icon and the version in place (`docs/images`,
+  `Resources/Icon`, `Resources/Info.plist`), so each has one copy. Its copy repeats the README:
+  change both together.
+- The panel is rebuilt in HTML and driven by dependency-free TypeScript whose matching,
+  highlighting and ordering mirror `ClipSearch`, `MatchHighlighter` and `HistoryStore`
+  (tested with Node's runner, `npm test`). It never touches the visitor's clipboard.
+- The download button links to the latest release's disk image when GitHub's API can see it
+  (a public repository, or a `GITHUB_TOKEN` at build time) and to the releases page otherwise.
+  The release workflow's last job asks Vercel for a rebuild, so the button follows new versions.
+- Vercel skips deployments for commits that don't touch the site
+  (`site/scripts/vercel-ignore.sh`).
+- Needs a hand check: Safari and Firefox, VoiceOver on the live panel, link previews in
+  Messages and Slack, and Google's Rich Results test once the site is live.
 
 ## Later (P2, only if it stays lean)
 - Expose the panel's selected row to VoiceOver as the list's selected child (needs an AppKit

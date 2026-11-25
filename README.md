@@ -2,6 +2,9 @@
 
 A keyboard-first clipboard history for the Mac. Native, private, and open source.
 
+**[kept.waseemsabir.com](https://kept.waseemsabir.com)** has a panel you can
+try in the browser.
+
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-000000?logo=apple&logoColor=white)
 ![Swift 6](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -139,7 +142,8 @@ or reset it with `tccutil reset Accessibility app.kept.Kept`.
 Contributions are welcome! Read [CONTRIBUTING.md](CONTRIBUTING.md) and
 [CLAUDE.md](CLAUDE.md) for the ground rules, then check
 [ARCHITECTURE.md](docs/ARCHITECTURE.md), [DESIGN.md](docs/DESIGN.md), and
-[RELEASING.md](docs/RELEASING.md). All participation is governed by the
+[RELEASING.md](docs/RELEASING.md). The website is its own small project in
+[`site/`](site/README.md). All participation is governed by the
 [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
