@@ -164,7 +164,7 @@ jobs:
       matrix:
         os: [macos-15]
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: kept-app
           path: ${{ runner.temp }}
