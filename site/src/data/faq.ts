@@ -29,9 +29,9 @@ export const questions: Question[] = [
     id: 'how-is-it-different',
     question: 'How is Kept different from other clipboard managers?',
     answer: [
-      'Kept is made for the keyboard: every action has a key, and the panel’s footer shows the ones that ' +
-        'apply. Clips sit in a dense list, not a grid of cards, so more of them fit on screen and they’re ' +
-        'quick to scan from the keyboard.',
+      'Kept is made for the keyboard: every action in the panel has a key, and the panel’s footer shows ' +
+        'the ones that apply. Clips sit in a dense list, not a grid of cards, so more of them fit on screen ' +
+        'and they’re quick to scan from the keyboard.',
       'It’s a native Mac app, written in Swift with AppKit and SwiftUI. Nothing you copy leaves your Mac: ' +
         'Kept has no network access, no account, no sync and no telemetry. And it’s free and open source ' +
         'under the MIT license.',
@@ -105,7 +105,7 @@ export const questions: Question[] = [
     id: 'how-many-clips',
     question: 'How many clips does Kept keep?',
     answer: [
-      '500 by default, and you can choose anywhere from 100 to 10,000 in Settings › General. Pinned ' +
+      '500 by default, and you can pick a limit from 100 up to 10,000 in Settings › General. Pinned ' +
         'clips don’t count toward the limit and always stay.',
       'Settings › Privacy can also forget unpinned clips you haven’t copied or pasted for a day, a week ' +
         'or a month.',
@@ -132,9 +132,11 @@ export const questions: Question[] = [
     id: 'uninstall',
     question: 'How do I uninstall Kept?',
     answer: [
-      'Quit Kept, then drag it from Applications to the Trash. To quit, right-click Kept’s icon in the menu ' +
-        'bar and choose **Quit Kept**.',
-      'Your history stays in `~/Library/Containers/app.kept.Kept`. Delete that folder too to remove it.',
+      'Quit Kept, drag it from Applications to the Trash, and delete `~/Library/Containers/app.kept.Kept` ' +
+        'to remove your history too.',
+      'To quit, right-click Kept’s icon in the menu bar and choose **Quit Kept**; if you’ve hidden the ' +
+        'icon, opening Kept again from Applications brings it back. If you let Kept paste for you, remove ' +
+        'it from System Settings › Privacy & Security as well (under Accessibility up to macOS 26).',
     ],
   },
   {

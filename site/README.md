@@ -24,15 +24,18 @@ npm run images    # remakes the icons and the social card in public/ (a Mac with
 `npm test` runs `tests/**/*.test.ts` with `node --test`; Node 22 runs the
 TypeScript as is (type stripping), so there is nothing to install. The tests
 cover the panel's pure modules (below), what the site generates for search
-engines and assistants (`tests/site/`) and `scripts/check-dist.mjs`;
+engines and assistants and how it reads GitHub's latest release
+(`tests/site/`), and `scripts/check-dist.mjs`;
 `tests/node.d.ts` types the bits of `node:test` and `node:assert` they use, so
 `npm run check` checks them too without `@types/node`. Modules the tests
 import name their imports with `.ts`, as Node needs.
 
 The build asks GitHub for the latest release and its disk image, and falls
 back to the version in `Resources/Info.plist` and the releases page when it
-can't (the repository is private, a rate limit, no network). It logs one line
-saying which. Two environment variables are read at build time:
+can't (the repository is private, a rate limit, no network, or the disk
+image's address isn't one of the repository's own release downloads,
+`https://github.com/WaseemSabir/Kept/releases/download/…`). It logs one line
+saying which, and why. Two environment variables are read at build time:
 
 | Variable       | Use |
 |----------------|-----|
@@ -57,7 +60,8 @@ src/
                         faq, install, screenshots, release (getRelease)
   lib/inline.ts         the inline convention used by the copy (below)
   lib/                  structured-data, documents (Markdown twins, llms files),
-                        markdown, crawlers (robots.txt, sitemap), images, responses
+                        markdown, crawlers (robots.txt, sitemap), images, responses,
+                        github-release (GitHub's latest-release answer, checked)
   styles/               tokens.css (DESIGN.md's tokens), base.css (type, column, links)
   layouts/Base.astro    the document and its whole <head>, from the page's entry in data/pages.ts
   components/           Header, Footer, Brand, Key, Inline, FactList, ShortcutTable,
@@ -67,7 +71,7 @@ src/
   pages/                index, shortcuts, privacy, 404; *.ts endpoints for robots.txt,
                         sitemap.xml, llms.txt, llms-full.txt, the Markdown twins, the manifest
 tests/panel/            node:test tests for src/scripts/panel
-tests/site/             what the site tells search engines and assistants
+tests/site/             what the site tells search engines and assistants; the release it offers
 tests/check-dist.test.ts  check:dist on a made-up site, whole and broken
 ```
 
@@ -130,7 +134,7 @@ tested:
 | `search.ts` | What the list shows for a query and a filter, best first | `ClipSearch`, `ClipFilter` |
 | `highlight.ts` | Where the query matches a row, and the "…" excerpt | `MatchHighlighter`, `ClipSummary` |
 | `history.ts` | Pin, unpin, delete; the section break; which row stays selected | `HistoryStore`, `PanelViewModel` |
-| `keys.ts` | Keys to commands | `PanelKeyRouter` |
+| `keys.ts` | Keys to commands (⌃P ⌃N ⌃U on a Mac only); an input method's keys left alone | `PanelKeyRouter` |
 | `wording.ts` | Empty states, footer hints, what's announced, what a paste puts on the line | `PanelViewModel+Display`, `PanelFooter`, `PasteHintCopy` |
 | `view.ts` | Brings the server-rendered rows, previews, footer and empty state in line with the state (DOM) | |
 | `stage.ts` | The panel closing and opening, the copy-only hint, the paste line (DOM) | |
@@ -138,14 +142,21 @@ tested:
 
 Rules it keeps:
 
-- **Progressive.** It sets `<html data-scripted>` once it has taken over;
-  until then the hint under the panel is hidden and the caret doesn't blink.
+- **Progressive.** It sets `<html data-scripted>` once it has taken over
+  (and doesn't start twice); until then the hint and the paste line under
+  the panel are hidden, their space kept, so nothing moves. Text typed in
+  the field before it loaded is the first search.
 - **Focus.** Nothing is focused on load and Tab is never taken. Keys act only
   while focus is in the panel, except ⇧⌘V, which puts the keyboard in the
   search field from anywhere on the page (and, while the copy-only hint
   shows, ⌘V outside a text field puts the copied clip on the paste line). A
   click in the panel focuses the field; a tap doesn't, so a phone's keyboard
-  stays down. `preventDefault` only for keys it handles.
+  stays down. Esc with an empty search moves focus to `[data-live-panel]`,
+  around the panel: the panel stops looking like the key window and its keys
+  stop acting, and Tab goes on from there. `preventDefault` only for keys it
+  handles, never for a key an input method is using (`isComposing`, or
+  `keyCode` 229 as Safari sends with the ⏎ that ends a composition), and ⌃P
+  ⌃N ⌃U only on a Mac (elsewhere they print, open a window, view source).
 - **CSP-ready.** No inline scripts, handlers or `style` attributes; state is
   shown with attributes and classes, and what's typed reaches the page only
   as text nodes. The two color swatches are SVG `fill`s for the same reason.
@@ -156,9 +167,10 @@ Rules it keeps:
 
 | Hook | What |
 |------|------|
-| `html[data-scripted]` | Set by the script: shows the hint under the panel and starts the paste line's caret. |
+| `html[data-scripted]` | Set by the script: shows the hint and the paste line under the panel and starts the caret. |
+| `[data-live-panel]` | The panel with the lines under it; `tabindex="-1"`, a group named "Kept demo": where Esc leaves the keyboard. |
 | `[data-panel]` | The window; `data-filter`, `data-selected` hold the state, `data-empty` ("list" or "panel") places the empty state; `.is-closing`, `.is-closed`, `.is-opening` for a paste. |
-| `[data-panel-search]` | The search field: a combobox, `aria-activedescendant` names the selected row. |
+| `[data-panel-search]` | The search field: a combobox, `aria-activedescendant` names the selected row; `aria-expanded` is false while an empty state stands in for the list. |
 | `[data-filter]` | Filter buttons, `aria-pressed`. |
 | `#panel-list`, `#clip-<id>` | The listbox (`tabindex="-1"`: the combobox keeps the keyboard) and its rows (`aria-selected`, `data-pinned`, `data-section-start`, `.number`, `.age`, `.text`). |
 | `[data-preview="<id>"]` | One preview per clip; all but the selected one are `hidden`. `[data-fact]` names each fact's value. |
@@ -237,7 +249,9 @@ and fails with the file and the reason:
   (≤ 155), and, unless it's `noindex`, a canonical on the site's origin that
   names the page itself, a Markdown twin and structured data;
 - the sitemap lists exactly the indexable pages; every JSON-LD block parses
-  and has `@context`, and its addresses on the site exist;
+  and has `@context`, and its addresses on the site exist; the home page's
+  states the app's version as `"softwareVersion":"0.1.0"` on one line, which
+  is how `scripts/vercel-ignore.sh` reads the live site's version;
 - robots.txt, the sitemap, llms.txt, llms-full.txt, the twins, the manifest,
   the icons and `og.png` (1200 × 630, read from the PNG) are there and well
   formed;
@@ -246,7 +260,9 @@ and fails with the file and the reason:
 - nothing loaded from another origin (scripts, stylesheets, images, media,
   fonts and other `url()`s in CSS);
 - `vercel.json` parses, sets a CSP without `unsafe-inline`, and its
-  `ignoreCommand` script exists and is executable.
+  `ignoreCommand` script exists and is executable, with `site_url` and
+  `repo_url` at its top equal to `productionUrl` and `repoUrl` in
+  `src/config.ts`.
 
 It checks against `SITE_URL`, or the production address in `src/config.ts`,
 the same origin the build used.
@@ -290,10 +306,27 @@ its decision and why, and builds when:
 - the previous deployment is of this same commit: a redeploy, or a deploy
   hook;
 - the previous commit isn't in Vercel's shallow clone;
+- for production deployments only (`VERCEL_ENV=production`), checked before
+  the diff: the live site states a different version than GitHub's latest
+  release. The live version is `"softwareVersion":"…"` in the JSON-LD of
+  `https://kept.waseemsabir.com/`; the latest release is the tag that
+  `https://github.com/WaseemSabir/Kept/releases/latest` redirects to
+  (`curl -sI`, no API and so no rate limit; a private repository answers
+  404). Both have a 5-second limit. It builds only when both versions were
+  found and differ; when either lookup fails (no `curl`, no network, nothing
+  found) the log line says so and the diff below decides, so a failed lookup
+  never builds every commit and never skips one;
 - `site/`, `docs/images`, `Resources/Icon` or `Resources/Info.plist`
   changed since the previous deployment.
 
 Otherwise (a push that only touches the app or other docs) it skips. The
 download button and version come from GitHub's latest release at build
-time, so after publishing a release, redeploy (or run a deploy hook): the
-same commit always builds.
+time. The release workflow (`.github/workflows/release.yml`, job `site`)
+waits 75 seconds after publishing, for GitHub's API to stop answering with
+the previous release, then calls the Vercel deploy hook in the
+`VERCEL_DEPLOY_HOOK_URL` secret. That builds the head of `master`, which
+may be a commit after the last deployment that only touched the app; the
+version rule above builds it anyway. If the hook fails, the run stays green
+with a warning: redeploy from Vercel (the same commit always builds). The
+two addresses are `site_url` and `repo_url` at the top of the script; they
+mirror `src/config.ts`, and `check:dist` fails if they don't.

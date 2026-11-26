@@ -489,8 +489,10 @@ row and the active filter in the live panel, the current page in the header
 (the active filter's small mark), and a text link under the pointer or the
 keyboard. Drawn as in the app: behind the text, a little past both ends,
 with the chisel slant (about 16° off vertical), never a solid control fill.
-Keyboard focus on anything that isn't a text link is a 2 px `ink` outline,
-2 px away: yellow on white can't reach 3:1.
+Yellow on the light page is about 1.2:1, so the marker never shows keyboard
+focus by itself: under the keyboard a text link gets the marker and a 2 px
+`markedInk` underline (dark on the yellow in both schemes), and anything
+that isn't a text link gets a 2 px `ink` outline, 2 px away.
 
 ### Type
 
@@ -602,7 +604,8 @@ is best explained by letting someone use the keyboard.
   works everywhere.
 - Without JavaScript it is a still picture of the same state, made of
   real text. Below 760 px it shows the list pane only and rows are tapped.
-- The only window shadow on the site is the panel's. With the keyboard in
+- The only window shadows on the site are the panel's and its copy-only
+  hint's (the app's hint has the system shadow too). With the keyboard in
   it the panel looks like a key window (a firmer edge, a deeper shadow),
   not a focus ring; the caret is the focus. For assistive technology it is
   a combobox with a listbox; result counts, pastes, pins and deletes are
@@ -610,9 +613,11 @@ is best explained by letting someone use the keyboard.
 
 ### Motion
 
-The panel fades and scales in once (≤120 ms, 0.98 → 1) when it opens and
-after a paste, and the caret on the paste line blinks. Selection, filters
-and hover change instantly. Under Reduce Motion nothing animates.
+As in the app, only the panel and its copy-only hint move: the panel fades
+out when a paste or a copy closes it and fades and scales back in (≤120 ms,
+0.98 → 1), and the hint fades in and out the same way. The caret on the
+paste line blinks. Selection, filters and hover change instantly. Under
+Reduce Motion nothing animates.
 
 ### Writing
 
@@ -631,5 +636,5 @@ requirements and price are a sentence, not a badge row.
 | Three-column feature cards with icons     | A fact list, the preview pane's own form. |
 | Yellow download button                    | Graphite (paper in dark mode). The marker stays a highlighter. |
 | A highlighted word in the headline        | The mark means selection, so it lives in the panel and on what you point at, not on a slogan. |
-| Fade-in on scroll for every section       | One motion: the panel opening. |
+| Fade-in on scroll for every section       | Only the panel and its hint move, opening and closing. |
 | Light/dark switch, cookie banner, analytics | Follows the system; sets no cookies and loads nothing from third parties. |

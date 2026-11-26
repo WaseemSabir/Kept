@@ -137,8 +137,9 @@ code {
 /*
   Text links. At rest prose links are underlined; under the pointer or the
   keyboard the marker swipes behind the text, a little past both ends, with
-  both ends cut at the chisel slant. Drawn as three backgrounds (two
-  slanted caps and the band) so it follows a link that wraps.
+  both ends cut at the chisel slant (the keyboard adds a firmer underline,
+  below). Drawn as three backgrounds (two slanted caps and the band) so it
+  follows a link that wraps.
 */
 
 /* Zero specificity (:where), so any component's own link styles win. */
@@ -213,10 +214,28 @@ code {
   outline-offset: 2px;
 }
 
-/* Text links (and buttons drawn as one) show focus with the marker instead. */
+/*
+  Text links (and buttons drawn as one) show keyboard focus with the marker
+  and a 2 px underline in the marked ink (dark on the yellow in both
+  schemes) at the usual offset instead: on the light page
+  the marker alone is too faint to find. Links with no underline at rest
+  (the header's, the footer's) gain it; where the mark goes on a part of
+  the link (.link-mark), the underline goes there too. The pointer gets
+  the marker only.
+*/
 a:not(.button):focus-visible,
 .text-button:focus-visible {
   outline: none;
+}
+
+a:not(.button):not(:has(.link-mark)):focus-visible {
+  text-decoration: underline 2px var(--marked-ink);
+}
+
+/* Apart from the rule above, so a browser without :has() still underlines these. */
+a:focus-visible .link-mark,
+.text-button:focus-visible {
+  text-decoration: underline 2px var(--marked-ink);
 }
 
 .visually-hidden {

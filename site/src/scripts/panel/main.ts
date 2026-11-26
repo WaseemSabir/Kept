@@ -18,7 +18,16 @@ import {
   togglePin,
   type History,
 } from './history.ts';
-import { command as commandFor, opensPanel, pastes, types, type Command } from './keys.ts';
+import {
+  command as commandFor,
+  composing,
+  opensPanel,
+  pastes,
+  platformFrom,
+  types,
+  type Command,
+  type Platform,
+} from './keys.ts';
 import { searchResults } from './search.ts';
 import { findStage, motion, motionMs, reducesMotion, Stage } from './stage.ts';
 import { findElements, render, type PanelElements } from './view.ts';
@@ -51,11 +60,21 @@ function isEditable(target: EventTarget | null): boolean {
   );
 }
 
+/** The system the page runs on, from what the browser says about it. */
+function currentPlatform(): Platform {
+  const { userAgentData } = navigator as Navigator & { userAgentData?: { platform?: string } };
+  return platformFrom({
+    userAgentData: userAgentData?.platform,
+    platform: navigator.platform,
+    userAgent: navigator.userAgent,
+  });
+}
+
 /** The parts of the page the panel works with. */
 interface Parts {
   elements: PanelElements;
   stage: Stage;
-  /** The panel with the lines under it: what ⇧⌘V scrolls into view. */
+  /** The panel with the lines under it: what ⇧⌘V scrolls into view, where Esc leaves the keyboard. */
   live: HTMLElement;
   status: HTMLElement;
   reset: HTMLButtonElement;
@@ -74,6 +93,8 @@ function findParts(root: Document): Parts | undefined {
 
 /** Makes the panel work, if the page has one; sets <html data-scripted> once it does. */
 export function startLivePanel(root: Document = document): void {
+  // Once: a second start would handle every key and click twice.
+  if (root.documentElement.hasAttribute('data-scripted')) return;
   const parts = findParts(root);
   if (!parts) return;
   wire(parts);
@@ -85,12 +106,15 @@ function wire({ elements, stage, live, status, reset }: Parts): void {
 
   // MARK: State
 
+  const platform = currentPlatform();
   const start = startingHistory(clips);
   let history: History = start;
-  let query = '';
+  // What's in the field already: typed while the script was still loading.
+  let query = field.value;
   let filter: FilterId = 'all';
   let list: Clip[] = searchResults(query, filter, history);
-  let selectedIndex: number | undefined = keptIndex(list, initialSelection, 0);
+  let selectedIndex: number | undefined =
+    query === '' ? keptIndex(list, initialSelection, 0) : list.length > 0 ? 0 : undefined;
   /** Whether a pin, an unpin or a delete changed the history (and Reset shows). */
   let edited = false;
   let isOpen = true;
@@ -183,6 +207,16 @@ function wire({ elements, stage, live, status, reset }: Parts): void {
     }
   }
 
+  /**
+   * Esc with nothing to clear: the keyboard leaves the panel for the box
+   * around it, so the panel stops being the key window and its keys stop
+   * acting, but Tab goes on from here (a blur would send it back to the
+   * top of the page in Safari).
+   */
+  function stepOut(): void {
+    live.focus({ preventScroll: true });
+  }
+
   /** Back to the page as it loaded: the starting history, no search, the image selected. */
   function startOver(): void {
     history = start;
@@ -235,7 +269,7 @@ function wire({ elements, stage, live, status, reset }: Parts): void {
         return true;
       case 'cancel':
         if (query !== '') setQuery('');
-        else leave();
+        else stepOut();
         return true;
     }
   }
@@ -302,6 +336,7 @@ function wire({ elements, stage, live, status, reset }: Parts): void {
   );
 
   document.addEventListener('keydown', (event) => {
+    if (composing(event)) return;
     if (opensPanel(event)) {
       event.preventDefault();
       summon();
@@ -314,11 +349,11 @@ function wire({ elements, stage, live, status, reset }: Parts): void {
   });
 
   panel.addEventListener('keydown', (event) => {
-    if (!isOpen) return;
+    if (composing(event) || !isOpen) return;
     const onButton = event.target instanceof HTMLButtonElement;
     // A focused filter keeps ⏎ and Space for itself.
     if (onButton && (event.key === 'Enter' || event.key === ' ')) return;
-    const command = commandFor(event);
+    const command = commandFor(event, platform);
     if (command && run(command)) {
       event.preventDefault();
     } else if (onButton && types(event)) {

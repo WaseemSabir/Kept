@@ -108,7 +108,7 @@ function aboutKept(context: SiteContext): string {
   return toMarkdown(
     'Kept keeps what you copy (text, rich text, links, images, files and colors) and brings it back when ' +
       'you press {⇧⌘V} in any app: type a few letters to find a clip and press {⏎} to paste it where you ' +
-      'were typing. Every action has a key. ' +
+      'were typing. Every action in the panel has a key. ' +
       `It needs macOS ${minimumMacOS.version} ${minimumMacOS.name} or later and runs natively on Macs with ` +
       'Apple silicon and on Intel Macs. Your history stays on your Mac: Kept runs in the App Sandbox ' +
       'without network access and has no accounts, no sync and no telemetry. It’s free and open source ' +

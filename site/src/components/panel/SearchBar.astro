@@ -3,7 +3,9 @@
 // active one marked. The query starts at the same x as the list's text.
 //
 // For assistive technology the field is a combobox that controls the list;
-// `aria-activedescendant` names the selected row.
+// `aria-activedescendant` names the selected row. The list shows as built,
+// so `aria-expanded` starts true; the script makes it false while an empty
+// state stands in for the list.
 import { filters, type FilterId } from '../../data/clips';
 
 interface Props {

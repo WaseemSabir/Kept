@@ -11,7 +11,9 @@
 //   canonical link on the site's origin that points back at itself, a
 //   Markdown twin and structured data;
 // - the sitemap and the indexable pages differ;
-// - a JSON-LD block doesn't parse or has no @context;
+// - a JSON-LD block doesn't parse or has no @context, or the home page's
+//   doesn't state the app's version ("softwareVersion":"…", as
+//   scripts/vercel-ignore.sh reads it from the live site);
 // - robots.txt, sitemap.xml, llms.txt, llms-full.txt, the Markdown twins,
 //   the manifest, og.png (1200 × 630) or an icon is missing or malformed,
 //   or a twin has a heading its page doesn't;
@@ -19,7 +21,8 @@
 //   executable inline <script> or a javascript: URL (the CSP blocks them);
 // - a script, stylesheet, image, media or font comes from another origin;
 // - vercel.json doesn't parse, or its ignoreCommand script is missing or
-//   not executable.
+//   not executable, or the site and repository addresses at the top of
+//   scripts/vercel-ignore.sh aren't productionUrl and repoUrl from src/config.ts.
 //
 // The checks are pure functions of the files, exported for tests/check-dist.test.ts.
 
@@ -222,6 +225,21 @@ export function pathForFile(file) {
   return `/${file.replace(/(^|\/)index\.html$/, '$1').replace(/\.html$/, '').replace(/\/$/, '')}`;
 }
 
+/**
+ * The app's version as scripts/vercel-ignore.sh reads it from the home page:
+ * `"softwareVersion":"0.1.0"` on one line, the version made of letters,
+ * digits and . + _ -. Undefined when it can't.
+ */
+export function softwareVersionText(html) {
+  return /"softwareVersion"[ \t]*:[ \t]*"([0-9A-Za-z.+_-]+)"/.exec(html)?.[1];
+}
+
+/** The `site_url='…'` and `repo_url='…'` lines at the top of scripts/vercel-ignore.sh. */
+export function ignoreScriptUrls(source) {
+  const value = (name) => new RegExp(`^${name}=(['"]?)([^'"\\s]*)\\1[ \\t]*$`, 'm').exec(source)?.[2];
+  return { site: value('site_url'), repo: value('repo_url') };
+}
+
 /** Content-Security-Policy directives from vercel.json's headers, for the paths it covers. */
 export function cspDirectives(vercel) {
   for (const rule of vercel?.headers ?? []) {
@@ -251,16 +269,20 @@ const decoder = new TextDecoder('utf-8', { fatal: true });
  * origin        the site's address, "https://kept.waseemsabir.com"
  * vercel        vercel.json, parsed, or an Error if it doesn't parse
  * isExecutable  (path relative to the site directory) → whether that file exists and is executable
+ * readFile      (path relative to the site directory) → its text, or undefined
+ * config        productionUrl and repoUrl from src/config.ts, which the ignore script mirrors
  *
  * @param {{
  *   files: Map<string, Uint8Array>,
  *   origin: string,
  *   vercel?: any,
  *   isExecutable?: (path: string) => boolean,
+ *   readFile?: (path: string) => string | undefined,
+ *   config?: { productionUrl: string, repoUrl: string },
  * }} options
  * @returns {{ file: string, reason: string }[]}
  */
-export function checkSite({ files, origin, vercel, isExecutable = () => false }) {
+export function checkSite({ files, origin, vercel, isExecutable = () => false, readFile = () => undefined, config }) {
   const problems = [];
   const fail = (file, reason) => problems.push({ file, reason });
   const site = new URL(origin);
@@ -411,6 +433,7 @@ export function checkSite({ files, origin, vercel, isExecutable = () => false })
 
     const jsonLd = named('script').filter((tag) => tag.attributes.type?.toLowerCase() === 'application/ld+json');
     if (indexable && jsonLd.length === 0) fail(file, 'has no structured data (application/ld+json)');
+    const versions = [];
     for (const block of jsonLd) {
       let data;
       try {
@@ -425,11 +448,21 @@ export function checkSite({ files, origin, vercel, isExecutable = () => false })
       // Addresses on this site in the data must exist (identifiers, @id, needn't).
       const visit = (value, key) => {
         if (typeof value === 'string') {
+          if (key === 'softwareVersion') versions.push(value);
           if (key !== '@id' && value.startsWith(`${site.origin}/`)) checkUrl(file, value, { what: `JSON-LD ${key}`, loads: false, base });
         } else if (Array.isArray(value)) value.forEach((item) => visit(item, key));
         else if (value && typeof value === 'object') Object.entries(value).forEach(([name, item]) => visit(item, name));
       };
       visit(data, '');
+    }
+    // The ignore script compares the live site's version with GitHub's latest release.
+    if (file === 'index.html' && indexable) {
+      const read = softwareVersionText(page.html);
+      if (versions.length === 0) {
+        fail(file, 'states no softwareVersion in its JSON-LD; scripts/vercel-ignore.sh reads the live version from it');
+      } else if (read !== versions[0]) {
+        fail(file, `JSON-LD softwareVersion "${versions[0]}" isn't written the way scripts/vercel-ignore.sh reads it ("softwareVersion":"…" on one line)`);
+      }
     }
 
     // What the CSP would block.
@@ -632,9 +665,21 @@ export function checkSite({ files, origin, vercel, isExecutable = () => false })
       fail('vercel.json', 'has no ignoreCommand');
     } else {
       const script = /(?:^|\s)((?:\.\/)?[\w./-]+\.sh)\b/.exec(command)?.[1];
+      const path = script?.replace(/^\.\//, '');
       if (!script) fail('vercel.json', `ignoreCommand "${command}" doesn't run a .sh script`);
-      else if (!isExecutable(script.replace(/^\.\//, ''))) {
+      else if (!isExecutable(path)) {
         fail('vercel.json', `ignoreCommand runs ${script}, which is missing or not executable (chmod +x)`);
+      } else if (config) {
+        // It asks the live site and GitHub for their versions: the addresses must be the site's own.
+        const urls = ignoreScriptUrls(readFile(path) ?? '');
+        for (const [name, value, expected, source] of [
+          ['site_url', urls.site, config.productionUrl, 'productionUrl'],
+          ['repo_url', urls.repo, config.repoUrl, 'repoUrl'],
+        ]) {
+          if (value !== expected) {
+            fail(path, `${name} is ${value === undefined ? 'missing' : `"${value}"`}; it must be "${expected}", src/config.ts's ${source}`);
+          }
+        }
       }
     }
   }
@@ -669,7 +714,7 @@ async function main() {
     process.exit(1);
   }
   // The same address astro.config.mjs builds with.
-  const { productionUrl } = await import('../src/config.ts');
+  const { productionUrl, repoUrl } = await import('../src/config.ts');
   const origin = process.env.SITE_URL ?? productionUrl;
 
   let vercel;
@@ -687,8 +732,16 @@ async function main() {
     }
   };
 
+  const readFile = (path) => {
+    try {
+      return readFileSync(join(siteDir, path), 'utf8');
+    } catch {
+      return undefined;
+    }
+  };
+
   const files = readTree(distDir);
-  const problems = checkSite({ files, origin, vercel, isExecutable });
+  const problems = checkSite({ files, origin, vercel, isExecutable, readFile, config: { productionUrl, repoUrl } });
   const pages = [...files.keys()].filter((file) => file.endsWith('.html')).length;
   const elapsed = Math.round(performance.now() - started);
   if (problems.length > 0) {

@@ -6,11 +6,13 @@ import {
   checkSite,
   fileForPath,
   icoSizes,
+  ignoreScriptUrls,
   isExecutableScript,
   parseAttributes,
   pathForFile,
   pngSize,
   scanHtml,
+  softwareVersionText,
   srcsetUrls,
   textOf,
 } from '../scripts/check-dist.mjs';
@@ -43,12 +45,14 @@ interface PageOptions {
   twin?: string;
   head?: string;
   body?: string;
+  /** The page's JSON-LD, when it has a twin. */
+  data?: string;
 }
 
-function page({ title, description, path, twin, head = '', body = '' }: PageOptions): string {
+function page({ title, description, path, twin, head = '', body = '', data = '{"@context":"https://schema.org","@type":"WebPage"}' }: PageOptions): string {
   const indexed = twin
     ? `<link rel="canonical" href="${origin}${path}"><link rel="alternate" type="text/markdown" href="${origin}${twin}">` +
-      '<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage"}</script>'
+      `<script type="application/ld+json">${data}</script>`
     : '<meta name="robots" content="noindex">';
   return (
     `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title>` +
@@ -69,6 +73,7 @@ function site(): Map<string, Uint8Array> {
         description: 'The home page.',
         path: '/',
         twin: '/index.html.md',
+        data: '{"@context":"https://schema.org","@graph":[{"@type":"SoftwareApplication","name":"Site","softwareVersion":"1.2.0"}]}',
         body: '<h2 id="more">More</h2><a href="/about">About</a> <a href="/about#team">Team</a> <a href="https://elsewhere.test/">Out</a>',
       }),
     ],
@@ -125,8 +130,21 @@ const vercel = {
   ],
 };
 
-function problems(files: Map<string, Uint8Array>, options: { vercel?: unknown; isExecutable?: (path: string) => boolean } = {}): string[] {
-  return checkSite({ files, origin, vercel, isExecutable: () => true, ...options }).map(
+const repoUrl = 'https://github.com/example/site';
+const config = { productionUrl: origin, repoUrl };
+
+/** The top of scripts/vercel-ignore.sh, its addresses mirroring the config. */
+const ignoreScript = `#!/bin/sh\n# The production site and the repository.\nsite_url='${origin}'\nrepo_url='${repoUrl}'\n`;
+
+interface Options {
+  vercel?: unknown;
+  isExecutable?: (path: string) => boolean;
+  readFile?: (path: string) => string | undefined;
+}
+
+function problems(files: Map<string, Uint8Array>, options: Options = {}): string[] {
+  const readFile = (path: string) => (path === 'scripts/vercel-ignore.sh' ? ignoreScript : undefined);
+  return checkSite({ files, origin, vercel, isExecutable: () => true, readFile, config, ...options }).map(
     ({ file, reason }) => `${file}: ${reason}`,
   );
 }
@@ -171,6 +189,22 @@ describe('reading HTML', () => {
     assert.deepEqual(parseAttributes('title="Kept &amp; co" alt=\'&#8984;&#x2318;\''), { title: 'Kept & co', alt: '⌘⌘' });
     const html = '<h2 id="x">Report a <em>security</em> &amp; privacy issue</h2>';
     assert.equal(textOf(html, scanHtml(html)[0]), 'Report a security & privacy issue');
+  });
+
+  test('reads the version as the ignore script does', () => {
+    assert.equal(softwareVersionText('<script type="application/ld+json">{"name":"Kept","softwareVersion":"0.1.0"}</script>'), '0.1.0');
+    assert.equal(softwareVersionText('{"softwareVersion": "1.0.0-beta.2"}'), '1.0.0-beta.2');
+    assert.equal(softwareVersionText('{"softwareVersion":\n"0.1.0"}'), undefined, 'split over two lines');
+    assert.equal(softwareVersionText('{"softwareVersion":"0.1 beta"}'), undefined);
+  });
+
+  test('reads the ignore script’s addresses', () => {
+    assert.deepEqual(ignoreScriptUrls(ignoreScript), { site: origin, repo: repoUrl });
+    assert.deepEqual(ignoreScriptUrls('site_url="https://a.test"\nrepo_url=https://github.com/a/b\n'), {
+      site: 'https://a.test',
+      repo: 'https://github.com/a/b',
+    });
+    assert.deepEqual(ignoreScriptUrls('echo hi\n'), { site: undefined, repo: undefined });
   });
 
   test('reads srcsets', () => {
@@ -249,6 +283,12 @@ describe('checkSite', () => {
     assertProblem(problems(edit('sitemap.xml', (xml) => xml.replace('</urlset>', `<url><loc>${origin}/404</loc></url></urlset>`))), /lists https:\/\/example\.test\/404/);
   });
 
+  test('the home page states the app’s version where the ignore script reads it', () => {
+    assertProblem(problems(edit('index.html', (html) => html.replace(',"softwareVersion":"1.2.0"', ''))), /^index\.html: states no softwareVersion in its JSON-LD/);
+    assertProblem(problems(edit('index.html', (html) => html.replace('"softwareVersion":"1.2.0"', '"softwareVersion":\n"1.2.0"'))), /^index\.html: JSON-LD softwareVersion "1\.2\.0" isn't written the way scripts\/vercel-ignore\.sh reads it/);
+    assert.deepEqual(problems(edit('about.html', (html) => html.replace('WebPage', 'AboutPage'))), [], 'other pages needn’t');
+  });
+
   test('structured data parses and has a @context', () => {
     assertProblem(problems(edit('about.html', (html) => html.replace('"@type":"WebPage"}', '"@type":"WebPage"'))), /JSON-LD that doesn't parse/);
     assertProblem(problems(edit('about.html', (html) => html.replace('"@context":"https://schema.org",', ''))), /JSON-LD block without @context/);
@@ -295,5 +335,19 @@ describe('checkSite', () => {
     const loose = structuredClone(vercel);
     loose.headers[0]!.headers[0]!.value += "; style-src 'self' 'unsafe-inline'";
     assertProblem(problems(site(), { vercel: loose }), /allows unsafe inline code/);
+  });
+
+  test('the ignore script asks the site’s own addresses', () => {
+    const script = (text: string) => ({ readFile: () => text });
+    assertProblem(
+      problems(site(), script(ignoreScript.replace(origin, 'https://old.example.test'))),
+      /^scripts\/vercel-ignore\.sh: site_url is "https:\/\/old\.example\.test"; it must be "https:\/\/example\.test", src\/config\.ts's productionUrl/,
+    );
+    assertProblem(
+      problems(site(), script(ignoreScript.replace(repoUrl, 'https://github.com/example/old'))),
+      /^scripts\/vercel-ignore\.sh: repo_url is "https:\/\/github\.com\/example\/old"; it must be "https:\/\/github\.com\/example\/site", src\/config\.ts's repoUrl/,
+    );
+    assertProblem(problems(site(), script('#!/bin/sh\n')), /^scripts\/vercel-ignore\.sh: site_url is missing/);
+    assertProblem(problems(site(), { readFile: () => undefined }), /^scripts\/vercel-ignore\.sh: repo_url is missing/);
   });
 });

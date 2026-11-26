@@ -312,7 +312,9 @@ jobs:
   # The site reads the latest release while it builds (site/src/data/release.ts),
   # so its download button offers a new version only after a new build. The
   # hook is a Vercel Deploy Hook for master (site/README.md); without the
-  # secret the site catches up at its next deploy.
+  # secret the site catches up at its next deploy. The release is out by
+  # now, so nothing here fails the run: a hook that doesn't answer leaves a
+  # warning to redeploy by hand.
   site:
     name: Rebuild the site
     needs: release
@@ -328,6 +330,13 @@ jobs:
             echo "::notice::No VERCEL_DEPLOY_HOOK_URL secret: the site offers this version after its next deploy."
             exit 0
           fi
-          curl --fail --silent --show-error --retry 3 --max-time 30 \
-            -X POST "$DEPLOY_HOOK_URL" > /dev/null
-          echo "Asked Vercel to rebuild the site"
+          # GitHub's API can go on answering with the previous "latest
+          # release" for about a minute after a new one is published, and
+          # the build would read that one: wait it out.
+          sleep 75
+          if curl --fail --silent --show-error --retry 3 --max-time 30 \
+            -X POST "$DEPLOY_HOOK_URL" > /dev/null; then
+            echo "Asked Vercel to rebuild the site"
+          else
+            echo "::warning::The Vercel deploy hook failed, so the site still offers the previous version. Redeploy the site from Vercel: Deployments, the latest production deployment, Redeploy."
+          fi

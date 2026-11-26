@@ -1,7 +1,9 @@
 // Keys to commands, as PanelKeyRouter maps them, less what the browser owns
 // (⌘1–⌘9, ⌘R, ⌘E) and Tab, which keeps moving through the page. Plain
 // letters, ⌫ and ← → aren't commands: they edit the search. Letter
-// shortcuts match the character the key types, as in the app.
+// shortcuts match the character the key types, as in the app. ⌃P ⌃N ⌃U are
+// the Mac's text keys; on other systems ⌃P prints and ⌃N opens a window, so
+// there they're left to the browser.
 
 export type Command =
   | 'up'
@@ -26,6 +28,36 @@ export interface KeyPress {
   altKey: boolean;
   shiftKey: boolean;
   isComposing?: boolean;
+  /** 229 for a key an input method takes. */
+  keyCode?: number;
+}
+
+/** The system the page runs on, as far as the keys care. */
+export type Platform = 'mac' | 'other';
+
+/** What the browser says about its system; any of it may be missing. */
+export interface PlatformHints {
+  /** `navigator.userAgentData.platform` (Chromium): "macOS", "Windows"… */
+  userAgentData?: string | undefined;
+  /** `navigator.platform`: "MacIntel", "Win32", "Linux x86_64"… */
+  platform?: string | undefined;
+  userAgent?: string | undefined;
+}
+
+/** A Mac or not: the client hint when there is one, else `navigator.platform`, else the user agent. */
+export function platformFrom(hints: PlatformHints): Platform {
+  if (hints.userAgentData) return hints.userAgentData === 'macOS' ? 'mac' : 'other';
+  if (hints.platform) return /^mac/i.test(hints.platform) ? 'mac' : 'other';
+  return /\bMacintosh\b/.test(hints.userAgent ?? '') ? 'mac' : 'other';
+}
+
+/**
+ * An input method has the key, so it isn't ours. Safari fires
+ * compositionend before the keydown of the ⏎ that confirms the text, and
+ * that keydown has isComposing false but keyCode 229.
+ */
+export function composing(press: KeyPress): boolean {
+  return press.isComposing === true || press.keyCode === 229;
 }
 
 /** The modifiers held, in the Mac's order: "", "⌘", "⌥⌘", "⇧⌘"… */
@@ -33,9 +65,8 @@ function modifiers(press: KeyPress): string {
   return (press.ctrlKey ? '⌃' : '') + (press.altKey ? '⌥' : '') + (press.shiftKey ? '⇧' : '') + (press.metaKey ? '⌘' : '');
 }
 
-export function command(press: KeyPress): Command | undefined {
-  // An input method is composing: its keys are its own.
-  if (press.isComposing) return undefined;
+export function command(press: KeyPress, platform: Platform): Command | undefined {
+  if (composing(press)) return undefined;
   const held = modifiers(press);
   switch (press.key) {
     case 'ArrowUp':
@@ -59,7 +90,7 @@ export function command(press: KeyPress): Command | undefined {
       return held === '' ? 'cancel' : undefined;
   }
   const character = press.key.toLowerCase();
-  if (held === '⌃') {
+  if (held === '⌃' && platform === 'mac') {
     if (character === 'p') return 'up';
     if (character === 'n') return 'down';
     if (character === 'u') return 'clear-search';

@@ -3,11 +3,13 @@
 // the paste line, the stand-in for wherever you were typing.
 //
 // src/scripts/panel/ makes it work and marks the document with
-// <html data-scripted>. Until then the hint stays hidden (keeping its space,
-// so nothing moves) and the paste line's caret doesn't blink: without
-// JavaScript the panel is a still picture.
+// <html data-scripted>. Until then the hint and the paste line stay hidden
+// (keeping their space, so nothing moves): without JavaScript the panel is
+// a still picture, and there's nothing to paste.
 //
-// Hooks: [data-live-panel]; [data-panel-hud] (the copy-only hint);
+// Hooks: [data-live-panel] (tabindex -1, out of the Tab order: Esc leaves
+// the keyboard here, so Tab goes on from the panel); [data-panel-hud] (the
+// copy-only hint);
 // [data-panel-hint] and [data-panel-reset]; [data-paste-line],
 // [data-paste-text] (where a paste goes), [data-paste-placeholder] and
 // <template data-paste-image> (the picture an image pastes as);
@@ -18,7 +20,7 @@ import Landscape from './Landscape.astro';
 import Panel from './Panel.astro';
 ---
 
-<div class="live" data-live-panel>
+<div class="live" role="group" aria-label="Kept demo" tabindex="-1" data-live-panel>
   <div class="stage">
     <Panel />
     {/* "Copied. Press ⌘V to paste.": the copy-only hint, where the app puts it (PasteHintView). */}
@@ -54,6 +56,11 @@ import Panel from './Panel.astro';
 </script>
 
 <style>
+  /* Focused by Esc (and by a click on the lines under the panel), to hold the place in the page; the panel losing its key look is the cue. */
+  .live:focus {
+    outline: none;
+  }
+
   .stage {
     position: relative;
   }
@@ -131,7 +138,8 @@ import Panel from './Panel.astro';
   }
 
   /* Hidden, space kept, until there's a script to make the panel work. */
-  :global(html:not([data-scripted])) .hint {
+  :global(html:not([data-scripted])) .hint,
+  :global(html:not([data-scripted])) .paste-line {
     visibility: hidden;
   }
 

@@ -173,6 +173,8 @@ export function render(elements: PanelElements, state: PanelState): void {
   setText(elements.emptyTitle, state.empty?.title ?? '');
   setText(elements.emptyHint, state.empty?.hint ?? '');
   elements.emptyHint.hidden = !state.empty?.hint;
+  // The combobox's list is collapsed while the empty state stands in for it.
+  setAttribute(field, 'aria-expanded', String(!state.empty));
   revealSelection(elements, selected && rows.get(selected.id));
 
   setAttribute(panel, 'data-filter', state.filter);
