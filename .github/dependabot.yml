@@ -21,3 +21,7 @@ updates:
     groups:
       site:
         patterns: ["*"]
+    # @astrojs/check accepts TypeScript 5 and 6 only; take 7 when it does.
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
