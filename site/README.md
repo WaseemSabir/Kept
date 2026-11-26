@@ -272,8 +272,14 @@ the same origin the build used.
 Vercel builds the site through its Git integration. The project's Root
 Directory is `site`, so `vercel.json` lives here and commands run here; the
 rest of the repository is still checked out, which the build needs
-(`../docs/images`, `../Resources`). The production branch is `master`; pull
-requests get previews.
+(`../docs/images`, `../Resources`).
+
+Only `master` deploys. Other branches and pull requests never build on
+Vercel: preview deployments are turned off in the project's settings, and
+`git.deploymentEnabled` in `vercel.json` says the same in the repository (a
+branch that matches several patterns deploys if one of them is `true`, so
+`master` does and nothing else). Pull requests are checked by the `Site`
+workflow instead, which builds the site without publishing it.
 
 `vercel.json` sets:
 

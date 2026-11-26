@@ -321,7 +321,7 @@ Notes (A5):
 - ☑ Search engines and AI assistants: titles and descriptions, structured data, sitemap, robots.txt, llms.txt and llms-full.txt, a Markdown twin of each page, a social card, icons
 - ☑ A strict Content-Security-Policy and the other security headers (`site/vercel.json`); no cookies, analytics, web fonts or third-party requests
 - ☑ CI: `site.yml` (type-check, tests, build, checks on the built output); the app's CI skips site-only changes; Dependabot watches `site/`
-- ☐ Publishing: the Vercel project on the Git integration (Root Directory `site`), kept.waseemsabir.com, and the `VERCEL_DEPLOY_HOOK_URL` secret so a release rebuilds the site
+- ☑ Publishing: the Vercel project `kept` on the Git integration (Root Directory `site`), kept.waseemsabir.com, and the `VERCEL_DEPLOY_HOOK_URL` secret so a release rebuilds the site
 
 Notes (W1):
 - The site reads the screenshots, the icon and the version in place (`docs/images`,
@@ -333,10 +333,15 @@ Notes (W1):
 - The download button links to the latest release's disk image when GitHub's API can see it
   (a public repository, or a `GITHUB_TOKEN` at build time) and to the releases page otherwise.
   The release workflow's last job asks Vercel for a rebuild, so the button follows new versions.
-- Vercel skips deployments for commits that don't touch the site
-  (`site/scripts/vercel-ignore.sh`).
-- Needs a hand check: Safari and Firefox, VoiceOver on the live panel, link previews in
-  Messages and Slack, and Google's Rich Results test once the site is live.
+- Only `master` deploys, and only for commits that touch the site
+  (`site/scripts/vercel-ignore.sh`) or after a release; pull requests are checked by the
+  `Site` workflow and never built on Vercel.
+- Needs a hand check: Safari and Firefox (typing with an input method in the panel's search
+  field, ⇧⌘V, Esc then Tab), VoiceOver on the live panel, link previews in Messages and Slack,
+  Google's Rich Results test, and, at the first release after 0.1, that the deploy hook's
+  build isn't skipped and offers the new version.
+- Still to turn on in the repository's settings: private vulnerability reporting, which
+  SECURITY.md and /privacy tell people to use.
 
 ## Later (P2, only if it stays lean)
 - Expose the panel's selected row to VoiceOver as the list's selected child (needs an AppKit

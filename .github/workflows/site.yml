@@ -2,7 +2,8 @@ name: Site
 
 # Builds and checks the product site (site/, Astro, static). Publishing it is
 # Vercel's job: its Git integration builds site/ when a push to master changes
-# it and gives pull requests a preview (site/README.md).
+# it, and deploys nothing else, so this is what checks a pull request
+# (site/README.md).
 
 on:
   push:

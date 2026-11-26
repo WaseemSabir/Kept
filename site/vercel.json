@@ -4,6 +4,12 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "ignoreCommand": "sh scripts/vercel-ignore.sh || exit 1",
+  "git": {
+    "deploymentEnabled": {
+      "**": false,
+      "master": true
+    }
+  },
   "redirects": [
     {
       "source": "/download",

@@ -576,9 +576,10 @@ each has one copy: the screenshots in `docs/images/`, the icon in
   builds (`site/src/data/release.ts`) and falls back to `Info.plist`.
 - **Publishing.** Vercel's Git integration builds `site/` on pushes to
   `master` that change it (`site/vercel.json`; `site/scripts/vercel-ignore.sh`
-  decides), and gives pull requests a preview. The `Site` workflow checks the
-  same build in CI, and the release workflow's last job calls a Vercel deploy
-  hook so the button offers the new version. `site/README.md` has the setup.
+  decides). Nothing else deploys: pull requests are checked by the `Site`
+  workflow, which runs the same build in CI without publishing it. The
+  release workflow's last job calls a Vercel deploy hook so the button
+  offers the new version. `site/README.md` has the setup.
 
 ## Conventions
 
